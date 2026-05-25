@@ -1,0 +1,91 @@
+# Dependabot keeps every ecosystem the repo uses fresh:
+#
+#   - Python deps   (pyproject.toml + uv.lock)
+#   - npm/pnpm deps (web/pnpm-lock.yaml)
+#   - GitHub Actions pinned by SHA digest in .github/workflows/**
+#   - Docker base images in docker/*.Dockerfile
+#   - Docker Compose service images in docker-compose.yml
+#
+# Conservative cadence — weekly, Monday morning UTC. Updates are grouped
+# per ecosystem to avoid PR floods; patch + minor land together, majors
+# get their own PR so an actual breaking change isn't merged on autopilot.
+
+version: 2
+
+updates:
+  # ---- Python -----------------------------------------------------------
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "python"]
+    groups:
+      python-dev:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["patch", "minor"]
+      python-runtime:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["patch", "minor"]
+
+  # ---- Web (pnpm lockfile is detected by the npm ecosystem) -------------
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "web"]
+    groups:
+      web-dev:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["patch", "minor"]
+      web-runtime:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["patch", "minor"]
+
+  # ---- GitHub Actions ---------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "ci"]
+    groups:
+      actions:
+        applies-to: version-updates
+        update-types: ["patch", "minor"]
+
+  # ---- Dockerfile base images ------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "docker"]
+
+  # ---- Compose service images ------------------------------------------
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels: ["deps", "docker"]
