@@ -65,29 +65,23 @@ jobs:
   python-test-integration:
     name: Tests (integration)
     runs-on: ubuntu-latest
-    # The integration job needs a shared CI-only password for the
-    # ``services:`` containers (Postgres, ClickHouse, RustFS). Create a
-    # repository secret named ``CI_TEST_SECRET`` in
-    # Settings → Secrets and variables → Actions; any non-empty value
-    # works. The secret never leaves the runner; the live services are
-    # destroyed at job end.
+    # All credentials below are the literal placeholder ``changeme`` — the
+    # services come up fresh on every run and are destroyed at job end.
+    # Nothing here is a real secret.
     env:
-      CI_USER: ippon
-      CI_DB: ippon
-      CI_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
-      DATABASE_URL: postgresql+psycopg://ippon:${{ secrets.CI_TEST_SECRET }}@localhost:5432/ippon
-      CLICKHOUSE_URL: http://ippon:${{ secrets.CI_TEST_SECRET }}@localhost:8123/ippon
+      DATABASE_URL: postgresql+psycopg://ippon:changeme@localhost:5432/ippon
+      CLICKHOUSE_URL: http://ippon:changeme@localhost:8123/ippon
       VALKEY_URL: redis://localhost:6379/0
       S3_ENDPOINT_URL: http://localhost:9100
       S3_BUCKET: ippon-sboms
-      RUSTFS_ACCESS_KEY: ${{ secrets.CI_TEST_SECRET }}
-      RUSTFS_SECRET_KEY: ${{ secrets.CI_TEST_SECRET }}
+      RUSTFS_ACCESS_KEY: changeme
+      RUSTFS_SECRET_KEY: changeme
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: ippon
-          POSTGRES_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
+          POSTGRES_PASSWORD: changeme
           POSTGRES_DB: ippon
         ports:
           - 5432:5432
@@ -98,14 +92,14 @@ jobs:
         image: clickhouse/clickhouse-server:24-alpine
         env:
           CLICKHOUSE_USER: ippon
-          CLICKHOUSE_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
+          CLICKHOUSE_PASSWORD: changeme
           CLICKHOUSE_DB: ippon
         ports:
           - 8123:8123
           - 9000:9000
         # ``wget`` isn't in the alpine image; use the bundled clickhouse-client.
         options: >-
-          --health-cmd "clickhouse-client --user ippon --password ${{ secrets.CI_TEST_SECRET }} --query 'SELECT 1' || exit 1"
+          --health-cmd "clickhouse-client --user ippon --password changeme --query 'SELECT 1' || exit 1"
           --health-interval 5s --health-timeout 5s --health-retries 20
           --health-start-period 30s
       valkey:
@@ -121,8 +115,8 @@ jobs:
           RUSTFS_VOLUMES: /data
           RUSTFS_ADDRESS: 0.0.0.0:9000
           RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
-          RUSTFS_ACCESS_KEY: ${{ secrets.CI_TEST_SECRET }}
-          RUSTFS_SECRET_KEY: ${{ secrets.CI_TEST_SECRET }}
+          RUSTFS_ACCESS_KEY: changeme
+          RUSTFS_SECRET_KEY: changeme
         ports:
           # NB: clickhouse already binds host 9000; rustfs S3 is remapped to 9100.
           - 9100:9000

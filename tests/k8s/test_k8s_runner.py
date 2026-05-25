@@ -71,18 +71,14 @@ def spec() -> ScanJobSpec:
         reporter_env={
             "CLICKHOUSE_URL": os.environ.get(
                 "IPPON_K8S_TEST_CLICKHOUSE_URL",
-                "http://ippon:ippon-dev@host.docker.internal:18123/ippon",
+                "http://ippon:changeme@host.docker.internal:18123/ippon",
             ),
             "S3_ENDPOINT_URL": os.environ.get(
                 "IPPON_K8S_TEST_S3_ENDPOINT", "http://host.docker.internal:9100"
             ),
             "S3_BUCKET": "ippon-sboms",
-            "AWS_ACCESS_KEY_ID": os.environ.get(
-                "IPPON_K8S_TEST_S3_ACCESS_KEY", "ippon-dev-access-key"
-            ),
-            "AWS_SECRET_ACCESS_KEY": os.environ.get(
-                "IPPON_K8S_TEST_S3_SECRET_KEY", "ippon-dev-secret-key-please-change"
-            ),
+            "AWS_ACCESS_KEY_ID": os.environ.get("IPPON_K8S_TEST_S3_ACCESS_KEY", "changeme"),
+            "AWS_SECRET_ACCESS_KEY": os.environ.get("IPPON_K8S_TEST_S3_SECRET_KEY", "changeme"),
         },
     )
 

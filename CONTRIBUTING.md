@@ -40,19 +40,6 @@ just scan REPO=https://github.com/anchore/syft
 `feat(scanner): add docker job runner`, `fix(api): verify github webhook hmac`,
 `chore(deps): bump grype to v0.x.y`, etc.
 
-## CI
-
-The GitHub Actions workflow (`.github/workflows/ci.yml`) needs a single
-repository secret to run the integration job:
-
-| Secret name      | Value                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------- |
-| `CI_TEST_SECRET` | Any non-empty string. Used as the password / access key for the ephemeral CI test services. |
-
-Set it under **Settings → Secrets and variables → Actions → New repository
-secret**. The secret never leaves the runner, and the services it
-configures are torn down at job end.
-
 ## Reporting issues
 
 For now, open a GitHub issue with reproduction steps. Security issues should go

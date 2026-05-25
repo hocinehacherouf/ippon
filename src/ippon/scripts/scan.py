@@ -30,7 +30,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--token",
-        default=os.environ.get("IPPON_DEV_TOKEN", "dev-token-replace-me"),
+        default=os.environ.get("IPPON_DEV_TOKEN", "changeme"),
         help="Bearer token (env: IPPON_DEV_TOKEN)",
     )
     parser.add_argument("--timeout", type=int, default=180, help="Total wall-clock budget, seconds")

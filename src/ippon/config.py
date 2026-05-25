@@ -31,12 +31,15 @@ class Settings(BaseSettings):
     )
 
     # --- connection URLs --------------------------------------------------
+    # NB: ``changeme`` is a placeholder. Every secret-shaped default below
+    # exists so tests + local dev work out of the box; real values come
+    # from ``.env`` (gitignored) or a deployment-time secret manager.
     database_url: str = Field(
-        default="postgresql+psycopg://ippon:ippon-dev@localhost:15432/ippon",
+        default="postgresql+psycopg://ippon:changeme@localhost:15432/ippon",
         description="SQLAlchemy URL for Postgres (psycopg v3 driver).",
     )
     clickhouse_url: str = Field(
-        default="http://ippon:ippon-dev@localhost:18123/ippon",
+        default="http://ippon:changeme@localhost:18123/ippon",
         description="HTTP URL for ClickHouse, used by clickhouse-connect and asynch.",
     )
     valkey_url: str = Field(
@@ -47,14 +50,14 @@ class Settings(BaseSettings):
     # --- object storage ---------------------------------------------------
     s3_endpoint_url: str = Field(default="http://localhost:9100")
     s3_bucket: str = Field(default="ippon-sboms")
-    rustfs_access_key: str = Field(default="ippon-dev-access-key")
-    rustfs_secret_key: str = Field(default="ippon-dev-secret-key-please-change")
+    rustfs_access_key: str = Field(default="changeme")
+    rustfs_secret_key: str = Field(default="changeme")
 
     # --- app --------------------------------------------------------------
-    ippon_dev_token: str = Field(default="dev-token-replace-me")
+    ippon_dev_token: str = Field(default="changeme")
     ippon_job_runner: JobRunnerBackend = Field(default="docker")
     ippon_secret_key: str = Field(
-        default="insecure-dev-key-32-bytes-min-please-change",
+        default="changeme",
         description="Master key for envelope-encrypting source-provider credentials.",
     )
 
@@ -72,9 +75,9 @@ class Settings(BaseSettings):
     # --- webhook secrets --------------------------------------------------
     # In production these come from each ``source_connections`` row; for the
     # scaffold there is one shared dev secret per provider, set via env.
-    github_webhook_secret: str = Field(default="dev-github-webhook-secret")
-    gitlab_webhook_secret: str = Field(default="dev-gitlab-webhook-secret")
-    azure_devops_webhook_secret: str = Field(default="dev-azure-devops-webhook-secret")
+    github_webhook_secret: str = Field(default="changeme")
+    gitlab_webhook_secret: str = Field(default="changeme")
+    azure_devops_webhook_secret: str = Field(default="changeme")
 
     # --- scanner pipeline -------------------------------------------------
     # Container images used by the DockerJobRunner. Each scan can override via
