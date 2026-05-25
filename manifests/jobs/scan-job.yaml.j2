@@ -113,6 +113,9 @@ spec:
         - name: reporter
           image: {{ reporter_image }}
           imagePullPolicy: IfNotPresent
+          # The consolidated backend image has no ENTRYPOINT/CMD; the
+          # reporter is one of three roles it supports.
+          command: ["python", "-m", "ippon.reporter"]
           env:
             - { name: IPPON_SCAN_ID,         value: "{{ scan_id }}" }
             - { name: IPPON_ORG_ID,          value: "{{ org_id }}" }

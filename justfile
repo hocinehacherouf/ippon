@@ -62,12 +62,12 @@ beat-dev:
 
 # --- M2: docker-compose stack -------------------------------------------
 
-# Bring up the local stack: infra + api + workers + beat. Builds the per-scan
-# reporter image first since scan jobs need it on the host daemon. Waits for
-# everything to be healthy (and for grype-db-updater to complete).
+# Bring up the local stack: infra + api + workers + beat. Builds the shared
+# backend image first since scan jobs spawn reporter containers from it on
+# the host daemon. Waits for everything to be healthy.
 up:
     @test -f .env || (echo "no .env found — copy .env.example to .env first" && exit 1)
-    docker build -f docker/reporter.Dockerfile -t ippon/reporter:dev .
+    docker build -f docker/backend.Dockerfile -t ippon/backend:dev .
     docker compose up -d --wait
 
 # Stop the local infra stack (data volumes are preserved).
@@ -118,9 +118,11 @@ DEFAULT_SCAN_REF  := "HEAD"
 scan repo=DEFAULT_SCAN_REPO ref=DEFAULT_SCAN_REF:
     uv run python -m ippon.scripts.scan {{repo}} {{ref}}
 
-# Build the per-scan reporter image (run once, or after editing the reporter).
-build-reporter:
-    docker build -f docker/reporter.Dockerfile -t ippon/reporter:dev .
+# Build the shared backend image used by api / workers / beat / the
+# per-scan reporter container. Run after editing src/ippon/* or the
+# Dockerfile.
+build-backend:
+    docker build -f docker/backend.Dockerfile -t ippon/backend:dev .
 
 # Show the scan-job containers for a given scan_id.
 scan-containers SCAN_ID:

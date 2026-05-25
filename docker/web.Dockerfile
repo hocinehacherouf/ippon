@@ -1,28 +1,45 @@
 # syntax=docker/dockerfile:1.7
 #
-# Frontend image. Two stages:
-#   1. ``deps``: install pnpm, hydrate node_modules — cached layer.
-#   2. ``dev``: run ``vite dev`` (used by compose; mounts ``web/`` over the
-#      build context so HMR works against the host's editor).
+# Frontend image. Two stages on Wolfi:
 #
-# A production stage (``build`` + nginx) is straightforward to add later;
-# the scaffold only needs the dev server.
+#   1. ``deps``: install pnpm, hydrate node_modules — cached layer.
+#   2. ``dev``: the only target compose builds; runs ``pnpm dev`` with
+#      HMR via a bind-mount over ``/app``.
+#
+# A production stage (``build`` + nginx) is straightforward to add when
+# we need it; the scaffold only ships the dev server.
 
-FROM node:22-alpine AS deps
+FROM cgr.dev/chainguard/wolfi-base@sha256:5743937d521cbeb9e8c73bf1bd7ba2589c178940eb03d7b148efecc962be8587 AS deps
 
-ENV PNPM_HOME=/pnpm
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+RUN apk add --no-cache nodejs-22 pnpm
 
 WORKDIR /app
 
-COPY web/package.json web/pnpm-lock.yaml* /app/
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile || pnpm install
+COPY web/package.json web/pnpm-lock.yaml /app/
+
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # ---
 
-FROM deps AS dev
-COPY web /app
+FROM cgr.dev/chainguard/wolfi-base@sha256:5743937d521cbeb9e8c73bf1bd7ba2589c178940eb03d7b148efecc962be8587 AS dev
+
+# ``wget`` is what compose's healthcheck uses to probe the dev server.
+RUN apk add --no-cache nodejs-22 pnpm wget \
+    && addgroup -g 1000 -S appgroup \
+    && adduser -S appuser -u 1000 -G appgroup
+
+WORKDIR /app
+
+COPY --from=deps --chown=appuser:appgroup /app/node_modules /app/node_modules
+COPY --chown=appuser:appgroup web /app
+
+USER appuser
+
+ENV NODE_ENV=development \
+    HOST=0.0.0.0 \
+    PORT=5173
+
 EXPOSE 5173
+
 CMD ["pnpm", "dev"]

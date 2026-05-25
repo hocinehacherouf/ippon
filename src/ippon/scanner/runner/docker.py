@@ -178,11 +178,13 @@ class DockerJobRunner:
                     reporter_env["IPPON_FAILED_STEP"] = failed_step
                     reporter_env["IPPON_FAILED_REASON"] = (failed_reason or "")[:1024]
 
+                # The consolidated backend image has no ENTRYPOINT/CMD —
+                # supply the full invocation here.
                 step = await self._run_step(
                     docker,
                     name="reporter",
                     image=spec.reporter_image,
-                    cmd=[],
+                    cmd=["python", "-m", "ippon.reporter"],
                     env=reporter_env,
                     volumes={ar_volume: "/artifacts"},
                     network_mode=spec.network,

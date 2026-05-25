@@ -121,6 +121,20 @@ def test_reporter_is_the_only_main_container() -> None:
     assert main[0]["name"] == "reporter"
 
 
+def test_reporter_command_is_explicit() -> None:
+    """The consolidated backend image has no ENTRYPOINT; the K8s manifest
+    must supply an explicit ``command`` so the reporter role is selected."""
+    spec = _spec(uuid4(), uuid4(), uuid4())
+    job, _, _ = _render_job_manifest(
+        spec,
+        namespace="ippon-scans",
+        service_account="ippon-scanner",
+        grype_db_pvc="grype-db-shared",
+    )
+    reporter = job["spec"]["template"]["spec"]["containers"][0]
+    assert reporter["command"] == ["python", "-m", "ippon.reporter"]
+
+
 def test_reporter_callback_secret_via_secretkeyref() -> None:
     spec = _spec(uuid4(), uuid4(), uuid4())
     job, _, secret_name = _render_job_manifest(
