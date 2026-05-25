@@ -8,7 +8,7 @@
 # helper from ``ippon.security`` are imported at runtime. No FastAPI, no
 # SQLAlchemy, no Celery.
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
