@@ -1,0 +1,11 @@
+# ippon-scans — the namespace where every scan-job Job and per-job Secret
+# lives. Kept distinct from the namespace that hosts the API/worker so
+# RBAC can scope tightly (Role below grants only what the K8sJobRunner
+# needs, and only inside this namespace).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ippon-scans
+  labels:
+    app.kubernetes.io/name: ippon
+    app.kubernetes.io/component: scanner

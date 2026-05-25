@@ -1,0 +1,43 @@
+# GitGuardian configuration. Schema: https://github.com/GitGuardian/ggshield
+#
+# The scaffold ships placeholder credentials so a fresh clone has a working
+# `.env` + compose stack. Real secrets land via `.env` (gitignored) or a
+# deployment-time secret manager — never in the files exempted below.
+#
+# Anything outside these paths/values is still scanned with the default
+# detector set so a real leak elsewhere in the repo would still trip the
+# check.
+
+version: 2
+exit_zero: false
+
+secret:
+  ignored_paths:
+    - "**/.env.example"
+    - "**/.env.*.example"
+    - "docker-compose.yml"
+    - "docker-compose.override.yml.example"
+    - "tests/**"
+    - ".github/workflows/ci.yml"
+
+  # Explicit allowlist for the placeholder values that show up across the
+  # scaffold's dev configuration. Listed by value so any *new* file that
+  # accidentally re-uses one is also exempted (and any genuinely-different
+  # secret stays flagged).
+  ignored_matches:
+    - name: "dev postgres / clickhouse password"
+      match: "ippon-dev"
+    - name: "dev rustfs secret key"
+      match: "ippon-dev-secret-key-please-change"
+    - name: "dev rustfs access key"
+      match: "ippon-dev-access-key"
+    - name: "dev bearer token"
+      match: "dev-token-replace-me"
+    - name: "dev master key"
+      match: "insecure-dev-key-32-bytes-min-please-change"
+    - name: "dev github webhook secret"
+      match: "dev-github-webhook-secret"
+    - name: "dev gitlab webhook secret"
+      match: "dev-gitlab-webhook-secret"
+    - name: "dev azdo webhook secret"
+      match: "dev-azure-devops-webhook-secret"

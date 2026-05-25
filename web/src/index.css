@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.98 0 0);
+  --color-fg: oklch(0.16 0 0);
+  --color-muted: oklch(0.55 0.01 0);
+  --color-border: oklch(0.92 0.005 0);
+
+  --color-sev-critical: oklch(0.55 0.22 25);
+  --color-sev-high: oklch(0.65 0.19 40);
+  --color-sev-medium: oklch(0.75 0.16 80);
+  --color-sev-low: oklch(0.65 0.12 150);
+  --color-sev-negligible: oklch(0.6 0.04 250);
+  --color-sev-unknown: oklch(0.6 0.01 0);
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+}

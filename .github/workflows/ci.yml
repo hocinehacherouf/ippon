@@ -1,0 +1,225 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-flight runs for a PR when a new commit lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.8.4"
+  PNPM_VERSION: "10"
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  python-lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-extras
+      - name: ruff check
+        run: uv run ruff check .
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+  python-typecheck:
+    name: Type-check (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-extras
+      - run: uv run mypy
+
+  python-test-unit:
+    name: Tests (unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-extras
+      # default ``addopts`` excludes integration + k8s
+      - run: uv run pytest -v
+
+  python-test-integration:
+    name: Tests (integration)
+    runs-on: ubuntu-latest
+    # The integration job needs a shared CI-only password for the
+    # ``services:`` containers (Postgres, ClickHouse, RustFS). Create a
+    # repository secret named ``CI_TEST_SECRET`` in
+    # Settings → Secrets and variables → Actions; any non-empty value
+    # works. The secret never leaves the runner; the live services are
+    # destroyed at job end.
+    env:
+      CI_USER: ippon
+      CI_DB: ippon
+      CI_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
+      DATABASE_URL: postgresql+psycopg://ippon:${{ secrets.CI_TEST_SECRET }}@localhost:5432/ippon
+      CLICKHOUSE_URL: http://ippon:${{ secrets.CI_TEST_SECRET }}@localhost:8123/ippon
+      VALKEY_URL: redis://localhost:6379/0
+      S3_ENDPOINT_URL: http://localhost:9100
+      S3_BUCKET: ippon-sboms
+      RUSTFS_ACCESS_KEY: ${{ secrets.CI_TEST_SECRET }}
+      RUSTFS_SECRET_KEY: ${{ secrets.CI_TEST_SECRET }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ippon
+          POSTGRES_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
+          POSTGRES_DB: ippon
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ippon -d ippon"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      clickhouse:
+        image: clickhouse/clickhouse-server:24-alpine
+        env:
+          CLICKHOUSE_USER: ippon
+          CLICKHOUSE_PASSWORD: ${{ secrets.CI_TEST_SECRET }}
+          CLICKHOUSE_DB: ippon
+        ports:
+          - 8123:8123
+          - 9000:9000
+        # ``wget`` isn't in the alpine image; use the bundled clickhouse-client.
+        options: >-
+          --health-cmd "clickhouse-client --user ippon --password ${{ secrets.CI_TEST_SECRET }} --query 'SELECT 1' || exit 1"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+          --health-start-period 30s
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      rustfs:
+        image: rustfs/rustfs:1.0.0-beta.4
+        env:
+          RUSTFS_VOLUMES: /data
+          RUSTFS_ADDRESS: 0.0.0.0:9000
+          RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+          RUSTFS_ACCESS_KEY: ${{ secrets.CI_TEST_SECRET }}
+          RUSTFS_SECRET_KEY: ${{ secrets.CI_TEST_SECRET }}
+        ports:
+          # NB: clickhouse already binds host 9000; rustfs S3 is remapped to 9100.
+          - 9100:9000
+          - 9101:9001
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:9000/health"
+          --health-interval 10s --health-timeout 5s --health-retries 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-extras
+      - name: Apply migrations
+        run: |
+          uv run alembic upgrade head
+          uv run python migrations/clickhouse/apply.py
+      - name: pytest -m integration
+        run: uv run pytest -m integration -v
+
+  web-lint-build:
+    name: Web (tsc + vite build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: tsc --noEmit
+        run: pnpm lint
+      - name: vite build
+        run: pnpm build
+
+  k8s-test:
+    name: Tests (k8s on kind)
+    runs-on: ubuntu-latest
+    # Heavy job: opt-in via the ``ci:k8s`` PR label, or trigger manually
+    # via ``workflow_dispatch``. Always runs on pushes to main.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event_name == 'push'
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'ci:k8s'))
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-extras
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: ippon-test
+          # Provide a default storage class via the local-path provisioner
+          # bundled with kind; the M7 PVC is RWX-only and won't bind here,
+          # which is fine for the smoke test (it only verifies Job admission).
+          wait: 60s
+      - name: Apply cluster manifests
+        run: kubectl apply -f manifests/cluster/namespace.yaml -f manifests/cluster/scanner-rbac.yaml
+      - name: pytest -m k8s
+        env:
+          IPPON_K8S_TEST_CONTEXT: kind-ippon-test
+        run: uv run pytest -m k8s -v
+
+  # Aggregate gate — ``required-status-checks`` in branch protection points
+  # here, so adding a new job above doesn't require updating the protection
+  # settings.
+  ci-success:
+    name: CI Success
+    needs:
+      - python-lint
+      - python-typecheck
+      - python-test-unit
+      - python-test-integration
+      - web-lint-build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          if [ "${{ needs.python-lint.result }}" != "success" ] \
+             || [ "${{ needs.python-typecheck.result }}" != "success" ] \
+             || [ "${{ needs.python-test-unit.result }}" != "success" ] \
+             || [ "${{ needs.python-test-integration.result }}" != "success" ] \
+             || [ "${{ needs.web-lint-build.result }}" != "success" ]; then
+            echo "one or more required jobs failed"
+            exit 1
+          fi
