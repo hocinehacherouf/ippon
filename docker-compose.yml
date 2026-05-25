@@ -9,10 +9,13 @@ name: ippon
 #
 # Production runs scan jobs as Kubernetes Jobs; this compose stack provides
 # only the dependencies the API + workers + scan-job containers connect to.
+#
+# Every base image is digest-pinned (sha256). Dependabot's docker-compose
+# ecosystem keeps both the tag and the digest fresh.
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
     container_name: ippon-postgres
     restart: unless-stopped
     environment:
@@ -32,7 +35,7 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24-alpine
+    image: clickhouse/clickhouse-server:24-alpine@sha256:82499fdb60e5bfaefb1e8f06f00a8857d61643fd6081c3f476ab6c7ff6d78766
     container_name: ippon-clickhouse
     restart: unless-stopped
     environment:
@@ -63,7 +66,7 @@ services:
       start_period: 15s
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:8-alpine@sha256:b027235326507cfdade9b6684056ec1d0b0c0757412e628245129b5d7b788618
     container_name: ippon-valkey
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "yes"]
@@ -79,7 +82,7 @@ services:
       start_period: 5s
 
   rustfs:
-    image: rustfs/rustfs:1.0.0-beta.4
+    image: rustfs/rustfs:1.0.0-beta.4@sha256:f7cb98ef492fa3c3ed0dbd65df3ce2dd205c666e24e7d7234d9402c9ed1001f9
     container_name: ippon-rustfs
     restart: unless-stopped
     environment:
@@ -102,11 +105,15 @@ services:
       start_period: 20s
 
   # --- API ---------------------------------------------------------------
+  # The api / worker-general / worker-scan / beat services all share one
+  # image (ippon/backend:dev) built from docker/backend.Dockerfile. Each
+  # service supplies its full ``command:`` since the image has no
+  # ENTRYPOINT/CMD.
   api:
     build:
       context: .
-      dockerfile: docker/api.Dockerfile
-    image: ippon/api:dev
+      dockerfile: docker/backend.Dockerfile
+    image: ippon/backend:dev
     container_name: ippon-api
     depends_on:
       postgres: { condition: service_healthy }
@@ -120,6 +127,7 @@ services:
       VALKEY_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://rustfs:9000
       CALLBACK_BASE_URL: http://api:8000
+    command: ["uvicorn", "ippon.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
     healthcheck:
@@ -163,15 +171,11 @@ services:
     restart: unless-stopped
 
   # --- Celery: workers + beat -------------------------------------------
-  # All three reuse the same image. They share the in-compose environment
-  # for connecting to postgres / clickhouse / valkey / rustfs.
   worker-general:
-    build:
-      context: .
-      dockerfile: docker/worker.Dockerfile
-    image: ippon/worker:dev
+    image: ippon/backend:dev
     container_name: ippon-worker-general
     depends_on:
+      api: { condition: service_started }
       valkey: { condition: service_healthy }
       postgres: { condition: service_healthy }
       clickhouse: { condition: service_healthy }
@@ -185,11 +189,19 @@ services:
       S3_ENDPOINT_URL: http://rustfs:9000
       CALLBACK_BASE_URL: http://api:8000
       SCAN_JOB_NETWORK: ippon_default
-    command: ["worker", "--loglevel=INFO", "--queues=general", "--concurrency=2", "--hostname=general@%h"]
+    command:
+      - celery
+      - -A
+      - ippon.worker.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --queues=general
+      - --concurrency=2
+      - --hostname=general@%h
     restart: unless-stopped
 
   worker-scan:
-    image: ippon/worker:dev
+    image: ippon/backend:dev
     container_name: ippon-worker-scan
     depends_on:
       worker-general: { condition: service_started }
@@ -199,18 +211,30 @@ services:
     env_file: [.env]
     environment:
       <<: *worker-env-overrides
+    # The scan worker uses the host docker daemon (via DockerJobRunner /
+    # aiodocker) to spawn the scan-job container chain. The Wolfi image
+    # runs as uid 1000 (appuser); adding gid 0 lets the process reach the
+    # forwarded docker.sock (which Docker Desktop / most distros own as
+    # root:root). The application still runs as a non-root user — only
+    # the secondary group is widened.
+    group_add:
+      - "0"
     volumes:
-      # The scan worker uses the host docker daemon (via DockerJobRunner /
-      # aiodocker) to spawn the scan-job container chain. Mount the socket
-      # so it can do so. Scan-job containers run on the host daemon and
-      # attach to the ``ippon_default`` compose network.
       - /var/run/docker.sock:/var/run/docker.sock
       - grype_db:/grype-db:ro
-    command: ["worker", "--loglevel=INFO", "--queues=scan", "--concurrency=4", "--hostname=scan@%h"]
+    command:
+      - celery
+      - -A
+      - ippon.worker.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --queues=scan
+      - --concurrency=4
+      - --hostname=scan@%h
     restart: unless-stopped
 
   beat:
-    image: ippon/worker:dev
+    image: ippon/backend:dev
     container_name: ippon-beat
     depends_on:
       worker-general: { condition: service_started }
@@ -218,14 +242,19 @@ services:
     env_file: [.env]
     environment:
       <<: *worker-env-overrides
-    command: ["beat", "--loglevel=INFO"]
+    command:
+      - celery
+      - -A
+      - ippon.worker.celery_app:celery_app
+      - beat
+      - --loglevel=INFO
     restart: unless-stopped
 
   # One-shot: hydrates the grype CVE DB into a named volume that scan-job
   # containers will mount read-only. Re-run with `just db-update` or simply
   # `docker compose run --rm grype-db-updater`.
   grype-db-updater:
-    image: anchore/grype:latest
+    image: anchore/grype:latest@sha256:391bfda62888fb4e98ff5c4c81598f7431a3c1eac3f8519d69d1ff00df247c1d
     container_name: ippon-grype-db-updater
     restart: "no"
     environment:

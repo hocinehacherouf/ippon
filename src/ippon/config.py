@@ -80,12 +80,23 @@ class Settings(BaseSettings):
     azure_devops_webhook_secret: str = Field(default="changeme")
 
     # --- scanner pipeline -------------------------------------------------
-    # Container images used by the DockerJobRunner. Each scan can override via
-    # the ``ScanJobSpec`` (eg. for a per-org pinned scanner version).
-    clone_image: str = Field(default="alpine/git:latest")
-    syft_image: str = Field(default="anchore/syft:latest")
-    grype_image: str = Field(default="anchore/grype:latest")
-    reporter_image: str = Field(default="ippon/reporter:dev")
+    # Container images used by the DockerJobRunner. Each scan can override
+    # via the ``ScanJobSpec`` (eg. for a per-org pinned scanner version).
+    # Pinned to digests so every scan uses a known runtime — bump these
+    # alongside the corresponding compose-stack pins.
+    clone_image: str = Field(
+        default="alpine/git:latest@sha256:3136372ed3c9e112d5a2620c66a6803e1b0b7f14a428fcbd0c5028bec4256430",
+    )
+    syft_image: str = Field(
+        default="anchore/syft:latest@sha256:86fde6445b483d902fe011dd9f68c4987dd94e07da1e9edc004e3c2422650de6",
+    )
+    grype_image: str = Field(
+        default="anchore/grype:latest@sha256:391bfda62888fb4e98ff5c4c81598f7431a3c1eac3f8519d69d1ff00df247c1d",
+    )
+    # Single backend image (api / worker / reporter). The DockerJobRunner
+    # passes an explicit ``command=["python", "-m", "ippon.reporter"]``
+    # since the image has no ENTRYPOINT.
+    reporter_image: str = Field(default="ippon/backend:dev")
 
     # Docker volume holding the Grype CVE DB (populated by grype-db-updater).
     grype_db_volume: str = Field(default="ippon_grype_db")
