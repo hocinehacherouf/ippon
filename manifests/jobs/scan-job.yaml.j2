@@ -1,0 +1,134 @@
+{# ---------------------------------------------------------------- #}
+{#                                                                  #}
+{# scan-job.yaml.j2 — Jinja2 template for one scan's batch/v1.Job.   #}
+{#                                                                  #}
+{# Rendered by ``K8sJobRunner.submit`` per scan. The rendered Job    #}
+{# carries a per-scan label set so an operator can grep with         #}
+{# ``kubectl get jobs -A -l ippon.scan-id=<uuid>``.                  #}
+{#                                                                  #}
+{# Sequencing: K8s guarantees init containers run in order and that  #}
+{# the main container only starts after all init containers exit 0. #}
+{# If an init container fails, the reporter does NOT run — which     #}
+{# means no callback fires. An orphan-reaper Celery beat task (out   #}
+{# of M7 scope) reconciles such stuck rows.                          #}
+{#                                                                  #}
+{# Pod-level NetworkPolicies, PodSecurityContext hardening, and KEDA #}
+{# autoscaling are deliberately omitted — they come with the Helm    #}
+{# chart (also out of scope).                                        #}
+{# ---------------------------------------------------------------- #}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ job_name }}
+  namespace: {{ namespace }}
+  labels:
+    app: ippon
+    ippon.scan-id: "{{ scan_id }}"
+    ippon.org-id: "{{ org_id }}"
+    ippon.repo-id: "{{ repo_id }}"
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ active_deadline_seconds }}
+  template:
+    metadata:
+      labels:
+        app: ippon
+        ippon.scan-id: "{{ scan_id }}"
+        ippon.org-id: "{{ org_id }}"
+        ippon.repo-id: "{{ repo_id }}"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ service_account }}
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: artifacts
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: grype-db
+          persistentVolumeClaim:
+            claimName: {{ grype_db_pvc }}
+            readOnly: true
+      initContainers:
+        - name: clone
+          image: {{ clone_image }}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              if [ -n "$IPPON_REF" ] && [ "$IPPON_REF" != "HEAD" ]; then
+                git clone --depth=1 --branch "$IPPON_REF" "$IPPON_REPO_URL" /workspace
+              else
+                git clone --depth=1 "$IPPON_REPO_URL" /workspace
+              fi
+              git -C /workspace rev-parse HEAD > /artifacts/commit-sha.txt
+              echo "cloned $IPPON_REPO_URL ref=${IPPON_REF:-default} sha=$(cat /artifacts/commit-sha.txt)"
+          env:
+            - { name: IPPON_REPO_URL, value: "{{ repo_url }}" }
+            - { name: IPPON_REF, value: "{{ ref }}" }
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "{{ mem_limit }}", cpu: "{{ cpu_limit }}" }
+          volumeMounts:
+            - { name: workspace, mountPath: /workspace }
+            - { name: artifacts, mountPath: /artifacts }
+        - name: syft
+          image: {{ syft_image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - "dir:/workspace"
+            - "-o"
+            - "cyclonedx-json=/artifacts/sbom.json"
+            - "--quiet"
+          resources:
+            requests: { memory: "512Mi", cpu: "250m" }
+            limits:   { memory: "{{ mem_limit }}", cpu: "{{ cpu_limit }}" }
+          volumeMounts:
+            - { name: workspace, mountPath: /workspace, readOnly: true }
+            - { name: artifacts, mountPath: /artifacts }
+        - name: grype
+          image: {{ grype_image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - "sbom:/artifacts/sbom.json"
+            - "-o"
+            - "json"
+            - "--file"
+            - "/artifacts/findings.json"
+            - "--quiet"
+          env:
+            - { name: GRYPE_DB_CACHE_DIR,    value: "/grype-db" }
+            - { name: GRYPE_DB_AUTO_UPDATE,  value: "false" }
+            - { name: GRYPE_DB_VALIDATE_AGE, value: "false" }
+          resources:
+            requests: { memory: "512Mi", cpu: "250m" }
+            limits:   { memory: "{{ mem_limit }}", cpu: "{{ cpu_limit }}" }
+          volumeMounts:
+            - { name: artifacts, mountPath: /artifacts }
+            - { name: grype-db,  mountPath: /grype-db, readOnly: true }
+      containers:
+        - name: reporter
+          image: {{ reporter_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: IPPON_SCAN_ID,         value: "{{ scan_id }}" }
+            - { name: IPPON_ORG_ID,          value: "{{ org_id }}" }
+            - { name: IPPON_REPO_ID,         value: "{{ repo_id }}" }
+            - { name: IPPON_CALLBACK_URL,    value: "{{ callback_url }}" }
+            - { name: IPPON_SCAN_STARTED_AT, value: "{{ started_at_iso }}" }
+{% for k, v in reporter_env|dictsort %}
+            - { name: "{{ k }}", value: "{{ v }}" }
+{% endfor %}
+            - name: IPPON_CALLBACK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ secret_name }}
+                  key: callback_secret
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "{{ mem_limit }}", cpu: "{{ cpu_limit }}" }
+          volumeMounts:
+            - { name: artifacts, mountPath: /artifacts, readOnly: true }

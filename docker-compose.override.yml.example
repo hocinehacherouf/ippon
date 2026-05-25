@@ -1,0 +1,14 @@
+# Copy to docker-compose.override.yml for local-only tweaks.
+# This file is in .gitignore — never commit it.
+#
+# Example: expose Postgres on a non-default host port to avoid clashing with
+# a system Postgres, or mount a local config snippet into ClickHouse.
+
+services:
+  # postgres:
+  #   ports:
+  #     - "55432:5432"
+
+  # clickhouse:
+  #   volumes:
+  #     - ./local/clickhouse-config.d:/etc/clickhouse-server/config.d:ro

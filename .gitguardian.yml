@@ -1,0 +1,27 @@
+# GitGuardian configuration. Schema: https://github.com/GitGuardian/ggshield
+#
+# NOTE: this file is consumed by the ``ggshield`` CLI (and the pre-commit
+# hook). The GitGuardian SaaS GitHub App reads its own dashboard config,
+# not this file — to silence false positives there, allowlist in the
+# dashboard.
+#
+# Every secret-shaped placeholder in the repo is the literal string
+# ``changeme`` (in ``.env.example``, ``src/ippon/config.py`` defaults,
+# the CI workflow, test fixtures). Real secrets land via ``.env``
+# (gitignored) or a deployment-time secret manager.
+
+version: 2
+exit_zero: false
+
+secret:
+  ignored_paths:
+    - "**/.env.example"
+    - "**/.env.*.example"
+    - "docker-compose.yml"
+    - "docker-compose.override.yml.example"
+    - "tests/**"
+    - ".github/workflows/ci.yml"
+
+  ignored_matches:
+    - name: "Placeholder for dev / CI / test credentials"
+      match: "changeme"

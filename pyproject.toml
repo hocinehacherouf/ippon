@@ -1,0 +1,144 @@
+[build-system]
+requires = ["hatchling>=1.29"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ippon"
+description = "Open-source SBOM generator and CVE scanner for GitHub/GitLab/Azure DevOps repositories"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12,<3.13"
+authors = [{ name = "ippon contributors" }]
+dynamic = ["version"]
+dependencies = [
+    "fastapi~=0.136.3",
+    "uvicorn[standard]~=0.48.0",
+    "pydantic~=2.13",
+    "pydantic-settings~=2.14",
+    "sqlalchemy[asyncio]~=2.0.50",
+    "alembic~=1.18",
+    "psycopg[binary]~=3.3",
+    "celery~=5.6",
+    "redis~=7.4",
+    "clickhouse-connect~=1.0",
+    "asynch~=0.3.1",
+    "aiobotocore~=3.7",
+    "boto3~=1.43",
+    "kubernetes-asyncio~=35.0",
+    "aiodocker~=0.26.0",
+    "httpx~=0.28.1",
+    "jinja2~=3.1",
+    "cryptography~=48.0",
+    "python-jose[cryptography]~=3.5",
+    "structlog~=25.5",
+]
+
+[project.optional-dependencies]
+reporter = [
+    "httpx~=0.28.1",
+    "clickhouse-connect~=1.0",
+    "boto3~=1.43",
+    "structlog~=25.5",
+]
+
+[dependency-groups]
+dev = [
+    "ruff~=0.15.14",
+    "mypy~=2.1",
+    "pytest~=9.0",
+    "pytest-asyncio~=1.3",
+    "pytest-cov~=7.1",
+    "pre-commit~=4.6",
+    "types-python-jose",
+    "types-pyyaml",
+]
+
+[tool.hatch.version]
+path = "src/ippon/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ippon"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["alembic/versions", "web"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501", # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802", "N806"]
+# `UUID as PgUUID` aliases the SQLAlchemy PG dialect type; N811 mis-reads
+# it as a constant being aliased to a non-constant.
+"src/ippon/models/**" = ["N811"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["src"]
+files = ["src/ippon", "tests", "migrations/clickhouse/apply.py"]
+exclude = [
+    "^alembic/versions/",
+    "^web/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "aiodocker.*",
+    "aiobotocore.*",
+    "asynch.*",
+    "boto3.*",
+    "botocore.*",
+    "clickhouse_connect.*",
+    "celery.*",
+    "kombu.*",
+]
+ignore_missing_imports = true
+
+# ``@shared_task`` and ``@celery_app.task`` come from Celery, which lacks
+# type stubs — mypy then flags the decorated functions as untyped.
+[[tool.mypy.overrides]]
+module = ["ippon.worker.tasks.*"]
+disallow_untyped_decorators = false
+
+# aiodocker has no type stubs; mypy then treats every call on its API as
+# "untyped in typed context". Disable that specific check in the runner.
+[[tool.mypy.overrides]]
+module = ["ippon.scanner.runner.docker"]
+disallow_untyped_calls = false
+
+# Same story for kubernetes-asyncio — its stubs are partial and the
+# create_namespaced_* calls require V1Job/V1Secret objects but accept dicts
+# at runtime. We pass dicts (rendered from Jinja2) and call out the friction.
+[[tool.mypy.overrides]]
+module = ["ippon.scanner.runner.k8s", "tests.k8s.*"]
+disallow_untyped_calls = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra -q --strict-markers -m 'not integration and not k8s'"
+markers = [
+    "integration: requires docker-compose stack",
+    "k8s: requires a Kubernetes cluster (kind/k3d)",
+]

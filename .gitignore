@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# uv
+.uv-cache/
+
+# Node / frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/build/
+# generated API client (regenerated from OpenAPI; checked in only via CI)
+# orval-generated artifacts only; hand-rolled web/src/api/client.ts +
+# fetcher.ts are checked in.
+web/src/api/generated.ts
+web/src/api/model/
+
+# Environment / local config
+.env
+.env.local
+.env.*.local
+docker-compose.override.yml
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local scratch
+scratch/
+*.log

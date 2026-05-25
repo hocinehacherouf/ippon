@@ -1,0 +1,55 @@
+# grype-db-updater — refreshes the shared Grype CVE DB on a schedule.
+# Runs every 6 hours; concurrencyPolicy=Replace so a slow run doesn't
+# pile up. Uses the same ``anchore/grype`` image scan jobs use, with
+# only one diff: it mounts the PVC read-write to write the DB.
+#
+# Fallback for clusters without RWX:
+#   - Bake the Grype DB into a sidecar image refreshed in CI (e.g. a
+#     ``ippon/grype-db:<date>`` image that just contains the DB tree).
+#   - Replace this CronJob with a Deployment that rolls the sidecar
+#     and shares the DB to scan Pods via an emptyDir + initContainer
+#     copy at scan time.
+# That path is documented in the Helm chart issue (out of scope here).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: grype-db-updater
+  namespace: ippon-scans
+  labels:
+    app.kubernetes.io/name: ippon
+    app.kubernetes.io/component: grype-db-updater
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: ippon
+            ippon.component: grype-db-updater
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: ippon-scanner
+          containers:
+            - name: grype-db
+              image: anchore/grype:latest
+              imagePullPolicy: IfNotPresent
+              args: ["db", "update"]
+              env:
+                - { name: GRYPE_DB_CACHE_DIR, value: "/grype-db" }
+              resources:
+                requests: { memory: "256Mi", cpu: "100m" }
+                limits:   { memory: "512Mi", cpu: "500m" }
+              volumeMounts:
+                - name: grype-db
+                  mountPath: /grype-db
+          volumes:
+            - name: grype-db
+              persistentVolumeClaim:
+                claimName: grype-db-shared

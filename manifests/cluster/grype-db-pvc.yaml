@@ -1,0 +1,28 @@
+# grype-db-shared — RWX PVC mounted read-only by every scan-job Pod's
+# ``grype`` init container. Hydrated by the grype-db-updater CronJob.
+#
+# **Cluster requirements**: this PVC needs a StorageClass that supports
+# ReadWriteMany (e.g. EFS, Azure Files, NFS, Longhorn). For clusters
+# without RWX support, the documented fallback is to bake the Grype DB
+# into a sidecar image refreshed in CI; see ``grype-db-updater-cronjob.yaml``
+# for notes.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grype-db-shared
+  namespace: ippon-scans
+  labels:
+    app.kubernetes.io/name: ippon
+    app.kubernetes.io/component: grype-db
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 4Gi
+  # Cluster admins can pin a specific StorageClass via env-templating or
+  # kustomize overlay; the scaffold leaves it unset to use the cluster
+  # default. Most managed clusters set the default to something RWO,
+  # which will fail to bind here — that is intentional, so operators
+  # surface the requirement explicitly.
+  # storageClassName: efs-sc
