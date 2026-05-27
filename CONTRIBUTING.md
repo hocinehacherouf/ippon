@@ -29,10 +29,15 @@ just format         # auto-fix lint and reformat
 Once M2 lands:
 
 ```bash
-just up             # bring up postgres / clickhouse / valkey / rustfs
+just up             # bring up postgres / clickhouse / valkey / rustfs / ch-ui
 just migrate        # apply Postgres + ClickHouse schemas
 just scan REPO=https://github.com/anchore/syft
 ```
+
+The local UI surface:
+
+- `http://localhost:5173/repos` — ippon web (repos + findings)
+- `http://localhost:13488` — ch-ui (ClickHouse admin / query editor)
 
 ## Commit style
 

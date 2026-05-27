@@ -33,6 +33,7 @@ just up                                               # infra + api + workers + 
 just migrate                                          # Postgres + ClickHouse schemas
 just scan https://github.com/anchore/syft             # end-to-end demo
 open http://localhost:5173/repos                      # UI
+open http://localhost:13488                           # ch-ui (ClickHouse admin)
 ```
 
 ## Architecture
@@ -55,7 +56,10 @@ open http://localhost:5173/repos                      # UI
 - **Postgres** — orgs, users, source connections, repos, scan policies,
   scan_jobs, webhook deliveries.
 - **ClickHouse** — SBOMs (full CycloneDX JSON), dependencies, findings,
-  scan metrics, VEX statements.
+  scan metrics, VEX statements. Browser-based query editor (ch-ui) at
+  `http://localhost:13488` — on first load enter
+  `URL=http://clickhouse:8123` plus the `CLICKHOUSE_*` credentials from
+  `.env`.
 - **RustFS** (S3-compatible) — canonical CycloneDX blobs at
   `sboms/{org_id}/{repo_id}/{commit_sha}.cdx.json`.
 

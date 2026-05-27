@@ -104,6 +104,30 @@ services:
       retries: 6
       start_period: 20s
 
+  # --- ClickHouse admin UI ----------------------------------------------
+  # Browser-based query editor for the analytical store. Local-dev only —
+  # not exposed beyond the host. Credentials are typed into the browser
+  # at first launch (form fields are: URL=http://clickhouse:8123, user
+  # and password from .env, database=ippon).
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:v2.1.2@sha256:9b9bc59e12f7a38ef2a697194d20da82fbe10d6fe5dba501996880f69e6a727b
+    container_name: ippon-ch-ui
+    restart: unless-stopped
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    environment:
+      # Server-side default target only — no credentials. The user
+      # supplies them in the browser form on first load.
+      CLICKHOUSE_URL: http://clickhouse:8123
+    ports:
+      - "${CH_UI_PORT:-13488}:3488"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3488/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
   # --- API ---------------------------------------------------------------
   # The api / worker-general / worker-scan / beat services all share one
   # image (ippon/backend:dev) built from docker/backend.Dockerfile. Each
