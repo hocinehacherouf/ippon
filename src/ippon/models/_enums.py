@@ -17,6 +17,7 @@ class SourceProvider(enum.StrEnum):
 
 
 class SourceCredentialType(enum.StrEnum):
+    none = "none"  # anonymous / public-repo connection — no stored credential
     pat = "pat"
     oauth = "oauth"
     app = "app"

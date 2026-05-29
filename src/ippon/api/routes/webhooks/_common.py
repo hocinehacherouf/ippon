@@ -1,7 +1,9 @@
 """Shared helpers for inbound webhook routes.
 
-All three providers go through the same dedupe-then-store path. Verification
-is provider-specific and stays in the route module.
+All three providers go through the same load-connection → verify →
+dedupe-then-store path. Connection lookup + signature verification live in
+``_connection`` / the per-provider route modules; this module owns the
+dedupe-and-store step.
 """
 
 from __future__ import annotations
@@ -9,17 +11,63 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ippon.models import WebhookDelivery, WebhookSource
+from ippon.config import Settings
+from ippon.models import SourceConnection, SourceProvider, WebhookDelivery, WebhookSource
+from ippon.security import CredentialDecryptionError, decrypt_secret
+
+
+async def load_connection_secret(
+    session: AsyncSession,
+    *,
+    connection_id: UUID,
+    provider: SourceProvider,
+    settings: Settings,
+) -> tuple[SourceConnection, str]:
+    """Load a connection by id and return it plus its decrypted webhook secret.
+
+    Raises 404 if the connection is unknown, 400 if it belongs to a different
+    provider, and 401 if it has no webhook secret configured or the stored
+    secret can't be decrypted (treated as not-configured to avoid leaking
+    crypto state to callers).
+    """
+    conn = await session.get(SourceConnection, connection_id)
+    if conn is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="unknown source connection"
+        )
+    if conn.provider != provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"connection is a {conn.provider.value} source, not {provider.value}",
+        )
+    if conn.webhook_secret_blob is None or conn.credential_kid is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="connection has no webhook secret configured",
+        )
+    try:
+        secret = decrypt_secret(
+            conn.webhook_secret_blob, conn.credential_kid, settings.ippon_secret_key
+        )
+    except CredentialDecryptionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="connection webhook secret could not be decrypted",
+        ) from exc
+    return conn, secret
 
 
 async def record_delivery(
     session: AsyncSession,
     *,
     source: WebhookSource,
+    source_connection_id: UUID,
     delivery_id: str,
     event_type: str,
     signature: str | None,
@@ -27,9 +75,9 @@ async def record_delivery(
 ) -> tuple[WebhookDelivery, bool]:
     """Insert a webhook delivery row, or return the existing one if duplicate.
 
-    Returns ``(row, is_new)``. ``is_new=False`` means the provider redelivered
-    a previously-seen ``delivery_id``; callers should respond with 200 and
-    skip downstream work.
+    Dedup key is ``(source, delivery_id)`` — provider delivery ids are
+    globally unique per provider. Returns ``(row, is_new)``; ``is_new=False``
+    means a redelivery the caller should ack without reprocessing.
     """
     existing = await session.scalar(
         select(WebhookDelivery).where(
@@ -42,6 +90,7 @@ async def record_delivery(
 
     row = WebhookDelivery(
         source=source,
+        source_connection_id=source_connection_id,
         delivery_id=delivery_id,
         event_type=event_type,
         signature=signature,

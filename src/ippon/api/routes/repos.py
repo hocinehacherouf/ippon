@@ -50,6 +50,7 @@ async def list_repos(_: CurrentUser, db: DbSession) -> RepositoryList:
         RepositoryListItem(
             id=repo.id,
             org_id=repo.org_id,
+            source_connection_id=repo.source_connection_id,
             full_name=repo.full_name,
             clone_url=repo.clone_url,
             default_branch=repo.default_branch,
@@ -83,6 +84,7 @@ async def get_repo(repo_id: UUID, _: CurrentUser, db: DbSession) -> RepositoryLi
     return RepositoryListItem(
         id=repo.id,
         org_id=repo.org_id,
+        source_connection_id=repo.source_connection_id,
         full_name=repo.full_name,
         clone_url=repo.clone_url,
         default_branch=repo.default_branch,

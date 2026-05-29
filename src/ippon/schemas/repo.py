@@ -17,6 +17,7 @@ class RepositoryListItem(BaseModel):
 
     id: UUID
     org_id: UUID
+    source_connection_id: UUID
     full_name: str
     clone_url: str
     default_branch: str

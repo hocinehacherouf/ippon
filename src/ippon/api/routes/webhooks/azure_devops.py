@@ -1,21 +1,27 @@
 """Azure DevOps webhook receiver.
 
-Azure DevOps service-hook subscriptions can be configured with HTTP Basic
-auth on outbound calls; the configured ``azure_devops_webhook_secret`` is
-the shared password. We dedupe on the payload's ``id`` field, which AzDO
-guarantees is unique per delivery.
+Routed per connection at ``/webhooks/azure-devops/{connection_id}``. AzDO
+service-hook subscriptions use HTTP Basic auth on outbound calls; the
+password is this connection's webhook secret (the username is ignored). We
+dedupe on the payload's ``id`` field, which AzDO guarantees unique per
+delivery.
 """
 
 from __future__ import annotations
 
 import base64
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 
 from ippon.api.deps import DbSession, SettingsDep
-from ippon.api.routes.webhooks._common import parse_payload, record_delivery
-from ippon.models import WebhookSource
+from ippon.api.routes.webhooks._common import (
+    load_connection_secret,
+    parse_payload,
+    record_delivery,
+)
+from ippon.models import SourceProvider, WebhookSource
 from ippon.security import constant_time_str_eq
 
 router = APIRouter(prefix="/webhooks/azure-devops", tags=["webhooks"])
@@ -39,18 +45,24 @@ def _verify_basic_auth(header: str | None, expected_secret: str) -> bool:
 
 
 @router.post(
-    "",
+    "/{connection_id}",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Receive an Azure DevOps webhook",
+    summary="Receive an Azure DevOps webhook for a specific connection",
 )
 async def receive_azure_devops_webhook(
+    connection_id: UUID,
     request: Request,
     session: DbSession,
     settings: SettingsDep,
 ) -> dict[str, str]:
-    if not _verify_basic_auth(
-        request.headers.get("Authorization"), settings.azure_devops_webhook_secret
-    ):
+    conn, secret = await load_connection_secret(
+        session,
+        connection_id=connection_id,
+        provider=SourceProvider.azure_devops,
+        settings=settings,
+    )
+
+    if not _verify_basic_auth(request.headers.get("Authorization"), secret):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or missing basic auth credentials",
@@ -75,6 +87,7 @@ async def receive_azure_devops_webhook(
     _, is_new = await record_delivery(
         session,
         source=WebhookSource.azure_devops,
+        source_connection_id=conn.id,
         delivery_id=delivery_id,
         event_type=event_type,
         signature=None,

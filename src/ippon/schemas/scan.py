@@ -13,6 +13,15 @@ from ippon.models import JobRunnerBackend, ScanJobStatus
 class ScanRequest(BaseModel):
     repo_url: str = Field(..., description="HTTPS clone URL.")
     ref: str = Field(default="HEAD", description="Branch, tag, or commit sha.")
+    source_connection_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Explicit source connection to scan under. When omitted, the "
+            "connection is matched by the clone URL host; if several "
+            "connections share that host the request is rejected, asking for "
+            "an explicit id."
+        ),
+    )
 
 
 class ScanResponse(BaseModel):
