@@ -16,7 +16,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from ippon.api._bootstrap import resolve_scan_target
+from ippon.api._bootstrap import (
+    AmbiguousConnectionError,
+    ConnectionNotFoundError,
+    resolve_scan_target,
+)
 from ippon.api.deps import CHDep, CurrentUser, DbSession, SettingsDep
 from ippon.models import JobRunnerBackend, ScanJob, ScanJobStatus, ScanTrigger
 from ippon.schemas.finding import Finding, FindingPage
@@ -46,7 +50,22 @@ async def create_scan(
     db: DbSession,
     settings: SettingsDep,
 ) -> ScanResponse:
-    _, _, repo = await resolve_scan_target(db, body.repo_url)
+    try:
+        _, _, repo = await resolve_scan_target(
+            db, body.repo_url, source_connection_id=body.source_connection_id
+        )
+    except ConnectionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"source connection {exc} not found",
+        ) from exc
+    except AmbiguousConnectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"multiple connections match host {exc}; pass source_connection_id to disambiguate"
+            ),
+        ) from exc
     scan = ScanJob(
         org_id=repo.org_id,
         repository_id=repo.id,

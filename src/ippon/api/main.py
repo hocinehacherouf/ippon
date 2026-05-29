@@ -19,6 +19,7 @@ from typing import Any
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -127,7 +128,9 @@ def _install_error_handlers(app: FastAPI) -> None:
                 "error": {
                     "code": status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "message": "validation failed",
-                    "details": exc.errors(),
+                    # jsonable_encoder flattens any non-serializable bits
+                    # (e.g. a validator-raised ValueError carried in ``ctx``).
+                    "details": jsonable_encoder(exc.errors()),
                     "request_id": getattr(request.state, "request_id", None),
                 }
             },

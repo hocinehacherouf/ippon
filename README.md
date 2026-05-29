@@ -51,6 +51,24 @@ open http://localhost:13488                           # ch-ui (ClickHouse admin)
 - **Web** — Vite + React 19 + TanStack Router/Query/Table + Tailwind v4 +
   small shadcn-style primitives.
 
+## Source connections
+
+An org can register **multiple connections per provider type** — github.com
+plus a GitHub Enterprise host, self-hosted GitLab alongside gitlab.com,
+several Azure DevOps orgs. Each connection (`POST /sources`) has its own
+`base_url`, an encrypted credential (Fernet, keyed by `IPPON_SECRET_KEY`),
+and a per-connection webhook secret returned **once** on create.
+
+- **Webhooks** are routed per connection at
+  `/webhooks/{github,gitlab,azure-devops}/{connection_id}` and verified
+  against that connection's own secret. Paste the `webhook_url` from the
+  create response into the provider's webhook config.
+- **Scans** resolve to a connection by matching the clone URL host against
+  each connection's `base_url`; pass `source_connection_id` to `POST /scans`
+  to disambiguate when several connections share a host. With no matching
+  connection, a public-repo scan falls back to an anonymous connection, so
+  `just scan <public-url>` works with zero configuration.
+
 ## Storage
 
 - **Postgres** — orgs, users, source connections, repos, scan policies,

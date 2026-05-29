@@ -71,13 +71,15 @@ class Settings(BaseSettings):
         ],
         description="Origins allowed by the CORS middleware. Defaults cover the dev frontend.",
     )
+    # Externally-reachable base URL of the API, used to build the
+    # per-connection webhook URLs shown to operators (an org's GitHub/GitLab/
+    # AzDO webhook config points here). Distinct from ``callback_base_url``,
+    # which is the in-cluster address the reporter posts back to.
+    ippon_public_base_url: str = Field(default="http://localhost:8000")
 
-    # --- webhook secrets --------------------------------------------------
-    # In production these come from each ``source_connections`` row; for the
-    # scaffold there is one shared dev secret per provider, set via env.
-    github_webhook_secret: str = Field(default="changeme")
-    gitlab_webhook_secret: str = Field(default="changeme")
-    azure_devops_webhook_secret: str = Field(default="changeme")
+    # NB: webhook secrets are now per-connection (encrypted on the
+    # ``source_connections`` row), not global. See ``ippon.security`` +
+    # ``api/routes/webhooks``.
 
     # --- scanner pipeline -------------------------------------------------
     # Container images used by the DockerJobRunner. Each scan can override
