@@ -2,6 +2,8 @@ node_modules/
 dist/
 .vite/
 build/
+# tsc -b incremental build cache (emitted by `pnpm build`)
+*.tsbuildinfo
 
 # orval-generated client; regenerated on every CI build
 src/api/generated.ts

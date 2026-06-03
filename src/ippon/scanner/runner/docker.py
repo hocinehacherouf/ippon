@@ -331,14 +331,35 @@ class DockerJobRunner:
         )
 
 
-_MEM_SUFFIXES = {"b": 1, "k": 1024, "m": 1024**2, "g": 1024**3}
+# Memory-quantity suffixes → bytes. Kubernetes IEC binary suffixes
+# (Ki/Mi/Gi/Ti) are the canonical form used in ``ScanJobSpec.mem_limit``;
+# the Docker-style single letters (b/k/m/g/t) are kept for backward
+# compatibility. All are treated as 1024-based.
+_MEM_SUFFIXES = {
+    "ki": 1024,
+    "mi": 1024**2,
+    "gi": 1024**3,
+    "ti": 1024**4,
+    "b": 1,
+    "k": 1024,
+    "m": 1024**2,
+    "g": 1024**3,
+    "t": 1024**4,
+}
 
 
 def _parse_mem_limit(value: str) -> int:
+    """Parse a memory quantity to bytes.
+
+    Accepts Kubernetes IEC quantities (``2Gi``, ``512Mi``), Docker-style
+    ``2g``, and plain byte counts. Everything is 1024-based.
+    """
     s = value.strip().lower()
     if not s:
         return 0
-    suffix = s[-1]
-    if suffix in _MEM_SUFFIXES:
-        return int(float(s[:-1]) * _MEM_SUFFIXES[suffix])
+    # Try a two-char IEC suffix (e.g. ``gi``) before a single-char one.
+    for n in (2, 1):
+        suffix = s[-n:]
+        if suffix in _MEM_SUFFIXES and s[:-n].strip():
+            return int(float(s[:-n]) * _MEM_SUFFIXES[suffix])
     return int(s)
