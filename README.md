@@ -36,6 +36,12 @@ open http://localhost:5173/repos                      # UI
 open http://localhost:13488                           # ch-ui (ClickHouse admin)
 ```
 
+> [!NOTE]
+> The Postgres image is `postgres:18`. A data volume initialized by an older
+> major won't boot on 18 — if `just up` shows Postgres crash-looping after a
+> version bump, run `just nuke` to wipe local volumes (destroys local data),
+> then `just up && just migrate`.
+
 ## Architecture
 
 - **API** (FastAPI, async) — webhook reception, scan enqueue, HMAC-verified

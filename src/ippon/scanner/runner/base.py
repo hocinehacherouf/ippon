@@ -86,8 +86,10 @@ class ScanJobSpec:
     # Env vars the reporter needs to talk to RustFS + ClickHouse.
     reporter_env: dict[str, str] = field(default_factory=dict)
 
-    # Resource caps (per container).
-    mem_limit: str = "2g"
+    # Resource caps (per container). ``mem_limit`` is a Kubernetes-style
+    # quantity (e.g. ``2Gi``) — valid as-is in the K8s Job manifest, and
+    # parsed to bytes by the Docker backend's ``_parse_mem_limit``.
+    mem_limit: str = "2Gi"
     cpu_count: float = 1.0
 
     # Hard ceiling on total wall-clock for the chain.

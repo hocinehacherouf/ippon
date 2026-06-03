@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     scan_job_network: str = Field(default="ippon_default")
 
     # Per-step resource limits for scan-job containers.
-    scan_mem_limit: str = Field(default="2g")
+    scan_mem_limit: str = Field(default="2Gi")
     scan_cpu_count: float = Field(default=1.0)
 
     # URL the reporter posts its callback to. The host portion must be

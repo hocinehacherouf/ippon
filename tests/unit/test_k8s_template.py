@@ -8,12 +8,18 @@ missing variables and asserts the Job has the structure
 
 from __future__ import annotations
 
+import re
 from uuid import UUID, uuid4
 
 import yaml
 
 from ippon.scanner.runner.base import ScanJobSpec
 from ippon.scanner.runner.k8s import _render_job_manifest
+
+# Kubernetes resource-quantity grammar (apimachinery). A Docker-style "2g"
+# does NOT match (the unit set is case-sensitive: G/Gi, not g) — which is
+# exactly the bug this guards against.
+_K8S_QUANTITY = re.compile(r"^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$")
 
 
 def _spec(scan_id: UUID, org_id: UUID, repo_id: UUID) -> ScanJobSpec:
@@ -203,3 +209,25 @@ def test_reporter_env_contains_callback_url_and_scan_ids() -> None:
     # Reporter-env entries from the spec should be forwarded too.
     assert env["CLICKHOUSE_URL"] == spec.reporter_env["CLICKHOUSE_URL"]
     assert env["S3_BUCKET"] == spec.reporter_env["S3_BUCKET"]
+
+
+def test_all_resource_quantities_are_valid_k8s() -> None:
+    """Every rendered cpu/memory request+limit must be a valid K8s quantity.
+
+    Regression guard for the ``mem_limit='2g'`` bug: a Docker-style memory
+    string renders into the Job and the apiserver rejects it with a 400.
+    """
+    spec = _spec(uuid4(), uuid4(), uuid4())
+    job, _, _ = _render_job_manifest(
+        spec,
+        namespace="ippon-scans",
+        service_account="ippon-scanner",
+        grype_db_pvc="grype-db-shared",
+    )
+    pod = job["spec"]["template"]["spec"]
+    containers = pod["initContainers"] + pod["containers"]
+    assert containers  # sanity
+    for c in containers:
+        for section in ("requests", "limits"):
+            for kind, qty in c["resources"][section].items():
+                assert _K8S_QUANTITY.match(str(qty)), f"{c['name']}.{section}.{kind}={qty!r}"
