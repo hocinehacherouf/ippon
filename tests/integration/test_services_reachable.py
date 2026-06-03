@@ -59,7 +59,7 @@ async def test_valkey_reachable() -> None:
 
     client = redis.Redis.from_url(get_settings().valkey_url, decode_responses=True)
     try:
-        pong = await client.ping()  # type: ignore[misc]
+        pong = await client.ping()
         assert pong
     finally:
         await client.aclose()

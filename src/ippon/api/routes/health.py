@@ -48,9 +48,7 @@ async def _check_clickhouse(client: CHClient) -> tuple[bool, str | None]:
 
 async def _check_valkey(client: Redis) -> tuple[bool, str | None]:
     try:
-        # redis-py's async ``ping`` returns ``Awaitable[bool] | bool`` per the
-        # stubs; in practice it always returns ``True`` or raises.
-        pong = await client.ping()  # type: ignore[misc]
+        pong = await client.ping()
         if not pong:
             return False, "PING did not return PONG"
         return True, None
