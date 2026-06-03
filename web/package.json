@@ -12,13 +12,13 @@
     "gen-api": "orval --config ./orval.config.ts"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.62.7",
-    "@tanstack/react-router": "^1.97.0",
+    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-router": "^1.170.11",
     "@tanstack/react-table": "^8.20.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -26,7 +26,7 @@
     "@tanstack/router-cli": "^1.167.12",
     "@tanstack/router-plugin": "^1.168.13",
     "@types/node": "^25.9.1",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.2.0",
     "orval": "^8.14.0",
