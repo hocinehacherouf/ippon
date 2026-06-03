@@ -15,7 +15,7 @@ name: ippon
 
 services:
   postgres:
-    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
     container_name: ippon-postgres
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
       start_period: 15s
 
   valkey:
-    image: valkey/valkey:8-alpine@sha256:b027235326507cfdade9b6684056ec1d0b0c0757412e628245129b5d7b788618
+    image: valkey/valkey:9-alpine@sha256:a35428eba9043cc0b79dbe54100f0c92784f2de00ad09b01182bfb1c5c83d1bd
     container_name: ippon-valkey
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "yes"]
@@ -110,7 +110,7 @@ services:
   # at first launch (form fields are: URL=http://clickhouse:8123, user
   # and password from .env, database=ippon).
   ch-ui:
-    image: ghcr.io/caioricciuti/ch-ui:v2.1.2@sha256:9b9bc59e12f7a38ef2a697194d20da82fbe10d6fe5dba501996880f69e6a727b
+    image: ghcr.io/caioricciuti/ch-ui:v2.2.0@sha256:795c2f2914966a9a21b1312bfe306d76c33e52fd7aba0e164f72ed0b6c1308ff
     container_name: ippon-ch-ui
     restart: unless-stopped
     depends_on:
