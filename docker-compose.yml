@@ -278,7 +278,7 @@ services:
   # containers will mount read-only. Re-run with `just db-update` or simply
   # `docker compose run --rm grype-db-updater`.
   grype-db-updater:
-    image: anchore/grype:latest@sha256:391bfda62888fb4e98ff5c4c81598f7431a3c1eac3f8519d69d1ff00df247c1d
+    image: anchore/grype:latest@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
     container_name: ippon-grype-db-updater
     restart: "no"
     environment:
