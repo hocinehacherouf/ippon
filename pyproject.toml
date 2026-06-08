@@ -30,7 +30,7 @@ dependencies = [
     "jinja2~=3.1",
     "cryptography~=48.0",
     "python-jose[cryptography]~=3.5",
-    "structlog~=25.5",
+    "structlog~=26.1",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +38,7 @@ reporter = [
     "httpx~=0.28.1",
     "clickhouse-connect~=1.1",
     "boto3~=1.43",
-    "structlog~=25.5",
+    "structlog~=26.1",
 ]
 
 [dependency-groups]
