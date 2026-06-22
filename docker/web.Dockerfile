@@ -9,7 +9,7 @@
 # A production stage (``build`` + nginx) is straightforward to add when
 # we need it; the scaffold only ships the dev server.
 
-FROM cgr.dev/chainguard/wolfi-base@sha256:5743937d521cbeb9e8c73bf1bd7ba2589c178940eb03d7b148efecc962be8587 AS deps
+FROM cgr.dev/chainguard/wolfi-base@sha256:e161445c05b19e668cb5cc44df2f0403329fd4f0ac892794255e328e760612a1 AS deps
 
 RUN apk add --no-cache nodejs-22 pnpm
 
@@ -22,7 +22,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 
 # ---
 
-FROM cgr.dev/chainguard/wolfi-base@sha256:5743937d521cbeb9e8c73bf1bd7ba2589c178940eb03d7b148efecc962be8587 AS dev
+FROM cgr.dev/chainguard/wolfi-base@sha256:e161445c05b19e668cb5cc44df2f0403329fd4f0ac892794255e328e760612a1 AS dev
 
 # ``wget`` is what compose's healthcheck uses to probe the dev server.
 RUN apk add --no-cache nodejs-22 pnpm wget \
