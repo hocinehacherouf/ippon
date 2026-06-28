@@ -31,7 +31,7 @@ def test_parse_validation_defaults_to_unverified() -> None:
 
 def test_parse_validation_reads_live_marker() -> None:
     assert parse_validation({"Validation": "valid"}) == (True, "verified")
-    assert parse_validation({"Validation": "invalid"}) == (False, "unknown")
+    assert parse_validation({"Validation": "invalid"}) == (False, "invalid")
 
 
 def test_secret_rows_map_fields_and_history() -> None:

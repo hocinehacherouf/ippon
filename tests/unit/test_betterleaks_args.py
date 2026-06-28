@@ -55,8 +55,9 @@ def test_secret_scan_network_none_by_default() -> None:
     assert _secret_scan_network(_spec(verify_secrets=False)) == "none"
 
 
-def test_secret_scan_network_bridge_when_verifying() -> None:
-    assert _secret_scan_network(_spec(verify_secrets=True)) == "bridge"
+def test_secret_scan_network_stays_isolated_even_when_verifying() -> None:
+    # Verification is not wired yet; verify_secrets must NOT open egress.
+    assert _secret_scan_network(_spec(verify_secrets=True)) == "none"
 
 
 def test_clone_entrypoint_uses_depth() -> None:

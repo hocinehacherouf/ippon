@@ -77,8 +77,15 @@ def _betterleaks_cmd(spec: ScanJobSpec) -> list[str]:
 
 
 def _secret_scan_network(spec: ScanJobSpec) -> str:
-    """Isolated by default; egress-capable 'bridge' only when verifying."""
-    return "bridge" if spec.verify_secrets else "none"
+    """Always network-isolated, like Syft/Grype.
+
+    Live verification (betterleaks ``validate`` CEL config) is not wired yet,
+    so we never open egress — ``spec.verify_secrets`` is reserved and inert
+    until a validation-enabled betterleaks config ships. Returning ``"bridge"``
+    here would open egress that nothing uses. ``spec`` is kept on the signature
+    so the verify path can re-enable egress without touching call sites.
+    """
+    return "none"
 
 
 @dataclass

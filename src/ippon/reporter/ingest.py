@@ -248,7 +248,9 @@ def parse_validation(entry: dict[str, Any]) -> tuple[bool, str]:
     if val in {"valid", "active", "verified"}:
         return True, "verified"
     if val in {"invalid", "inactive"}:
-        return False, "unknown"
+        # Checked and confirmed dead — distinct from "unknown" (checked,
+        # couldn't determine) and "unverified" (never checked).
+        return False, "invalid"
     if val == "error":
         return False, "error"
     return False, "unverified"
@@ -393,7 +395,17 @@ def ingest(
         if secrets_path is not None and secrets_path.exists():
             raw_secrets = secrets_path.read_bytes()
             if raw_secrets.strip():
-                secrets = json.loads(raw_secrets.decode("utf-8"))
+                parsed = json.loads(raw_secrets.decode("utf-8"))
+                # betterleaks emits a JSON array; tolerate null / an
+                # unexpected shape rather than crash the whole ingest (which
+                # would fail an otherwise-successful SBOM/CVE scan).
+                if isinstance(parsed, list):
+                    secrets = parsed
+                else:
+                    LOG.warning(
+                        "secrets report is not a JSON array (got %s); treating as empty",
+                        type(parsed).__name__,
+                    )
         secret_rows, verified_secret_count = secret_finding_rows(secrets, ctx, ctx.commit_sha)
         if secret_rows:
             client.insert(

@@ -87,7 +87,12 @@ export interface FindingPage {
   offset: number;
 }
 
-export type ValidationStatus = "verified" | "unverified" | "unknown" | "error";
+export type ValidationStatus =
+  | "verified"
+  | "unverified"
+  | "invalid"
+  | "unknown"
+  | "error";
 
 export interface SecretFinding {
   scan_id: string;

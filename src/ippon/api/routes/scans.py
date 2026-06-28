@@ -181,7 +181,9 @@ async def list_secrets(
     offset: Annotated[int, Query(ge=0)] = 0,
     validation_status: Annotated[
         str | None,
-        Query(description="Filter by validation status (verified/unverified/unknown/error)."),
+        Query(
+            description="Filter by validation status (verified/unverified/invalid/unknown/error)."
+        ),
     ] = None,
 ) -> SecretFindingPage:
     where = "scan_id = {scan_id:UUID}"

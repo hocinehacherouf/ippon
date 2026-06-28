@@ -29,7 +29,10 @@ def build_scan_job_spec(
     }
     # Secret-scan flags: a ScanPolicy (repo override, else org default) wins;
     # otherwise fall back to global Settings. verify is policy-only — off
-    # unless a policy explicitly opts in.
+    # unless a policy explicitly opts in. NOTE: verify_secrets is currently
+    # inert — live verification needs a validation-enabled betterleaks config
+    # that isn't wired yet, and the runner keeps the stage network-isolated
+    # regardless (see DockerJobRunner._secret_scan_network).
     secret_scan_enabled = (
         policy.secret_scan_enabled if policy is not None else settings.secret_scan_enabled
     )

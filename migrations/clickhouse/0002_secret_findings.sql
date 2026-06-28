@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS secret_findings (
     committed_at       Nullable(DateTime),
     tags               Array(String),
     verified           Bool,                      -- true only if validated live
-    validation_status  LowCardinality(String),    -- verified/unverified/unknown/error
+    validation_status  LowCardinality(String),    -- verified/unverified/invalid/unknown/error
     is_historical      Bool,                      -- commit_sha != HEAD
     scanned_at         DateTime
 ) ENGINE = MergeTree()
