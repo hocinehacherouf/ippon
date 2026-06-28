@@ -44,6 +44,8 @@ class IngestResult:
     dependency_count: int
     finding_count: int
     severity_counts: dict[str, int]
+    secret_finding_count: int
+    verified_secret_count: int
 
 
 def build_object_key(org_id: UUID, repo_id: UUID, commit_sha: str) -> str:
@@ -231,6 +233,79 @@ def _finding_rows(
     return rows, counts
 
 
+def parse_validation(entry: dict[str, Any]) -> tuple[bool, str]:
+    """Return ``(verified, validation_status)`` from a betterleaks entry.
+
+    Detect-only is the default. The validation result field is
+    version-dependent (see the spec's "items to confirm") — confirm the key
+    against the pinned betterleaks version. We read ``Validation`` and map
+    its value; absence means verification did not run.
+    """
+    raw = entry.get("Validation")
+    if raw is None:
+        return False, "unverified"
+    val = str(raw).strip().lower()
+    if val in {"valid", "active", "verified"}:
+        return True, "verified"
+    if val in {"invalid", "inactive"}:
+        # Checked and confirmed dead — distinct from "unknown" (checked,
+        # couldn't determine) and "unverified" (never checked).
+        return False, "invalid"
+    if val == "error":
+        return False, "error"
+    return False, "unverified"
+
+
+def _parse_git_date(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def secret_finding_rows(
+    secrets: list[dict[str, Any]], ctx: IngestContext, head_sha: str
+) -> tuple[list[dict[str, Any]], int]:
+    """Map betterleaks JSON entries to ``secret_findings`` rows.
+
+    Returns ``(rows, verified_count)``. Only the redacted ``Match`` is kept —
+    never the raw secret value.
+    """
+    rows: list[dict[str, Any]] = []
+    verified_count = 0
+    for entry in secrets:
+        verified, status = parse_validation(entry)
+        if verified:
+            verified_count += 1
+        commit = str(entry.get("Commit") or "")
+        rows.append(
+            {
+                "scan_id": ctx.scan_id,
+                "org_id": ctx.org_id,
+                "repo_id": ctx.repo_id,
+                "commit_sha": commit,
+                "rule_id": str(entry.get("RuleID") or ""),
+                "description": str(entry.get("Description") or ""),
+                "file": str(entry.get("File") or ""),
+                "start_line": int(entry.get("StartLine") or 0),
+                "end_line": int(entry.get("EndLine") or 0),
+                "match": str(entry.get("Match") or ""),
+                "fingerprint": str(entry.get("Fingerprint") or ""),
+                "author": str(entry.get("Author") or ""),
+                "email": str(entry.get("Email") or ""),
+                "committed_at": _parse_git_date(entry.get("Date")),
+                "tags": [str(t) for t in (entry.get("Tags") or [])],
+                "verified": verified,
+                "validation_status": status,
+                "is_historical": commit != head_sha,
+                "scanned_at": ctx.scanned_at,
+            }
+        )
+    return rows, verified_count
+
+
 def ingest(
     *,
     sbom_path: Path,
@@ -241,6 +316,7 @@ def ingest(
     s3_access_key: str,
     s3_secret_key: str,
     scan_started_at: datetime,
+    secrets_path: Path | None = None,
 ) -> IngestResult:
     """End-to-end ingest: upload SBOM blob → insert CH rows → return summary."""
     sbom_bytes = sbom_path.read_bytes()
@@ -314,6 +390,31 @@ def ingest(
                 column_names=list(find_rows[0].keys()),
             )
 
+        # Secret findings (optional stage). Missing/empty file → zero rows.
+        secrets: list[dict[str, Any]] = []
+        if secrets_path is not None and secrets_path.exists():
+            raw_secrets = secrets_path.read_bytes()
+            if raw_secrets.strip():
+                parsed = json.loads(raw_secrets.decode("utf-8"))
+                # betterleaks emits a JSON array; tolerate null / an
+                # unexpected shape rather than crash the whole ingest (which
+                # would fail an otherwise-successful SBOM/CVE scan).
+                if isinstance(parsed, list):
+                    secrets = parsed
+                else:
+                    LOG.warning(
+                        "secrets report is not a JSON array (got %s); treating as empty",
+                        type(parsed).__name__,
+                    )
+        secret_rows, verified_secret_count = secret_finding_rows(secrets, ctx, ctx.commit_sha)
+        if secret_rows:
+            client.insert(
+                "secret_findings",
+                [list(r.values()) for r in secret_rows],
+                column_names=list(secret_rows[0].keys()),
+            )
+        secret_finding_count = len(secret_rows)
+
         duration = (datetime.now(UTC) - scan_started_at).total_seconds()
         client.insert(
             "scan_metrics",
@@ -333,6 +434,8 @@ def ingest(
                     severity_counts.get("medium", 0),
                     severity_counts.get("low", 0),
                     ctx.scanned_at,
+                    secret_finding_count,
+                    verified_secret_count,
                 ]
             ],
             column_names=[
@@ -350,6 +453,8 @@ def ingest(
                 "medium_count",
                 "low_count",
                 "scanned_at",
+                "secret_finding_count",
+                "verified_secret_count",
             ],
         )
     finally:
@@ -364,4 +469,6 @@ def ingest(
         dependency_count=len(dep_rows),
         finding_count=len(find_rows),
         severity_counts=severity_counts,
+        secret_finding_count=secret_finding_count,
+        verified_secret_count=verified_secret_count,
     )

@@ -103,6 +103,19 @@ class Settings(BaseSettings):
     # Docker volume holding the Grype CVE DB (populated by grype-db-updater).
     grype_db_volume: str = Field(default="ippon_grype_db")
 
+    # --- secret scanning (betterleaks) -----------------------------------
+    # Pinned betterleaks image for the secret-scan stage. Pin to a
+    # ``@sha256:`` digest before production, like the other scanner images.
+    secret_scan_image: str = Field(
+        default="ghcr.io/betterleaks/betterleaks:v1.6.0",
+    )
+    # Global default for whether the secret-scan stage runs. A per-repo /
+    # per-org ScanPolicy can override this. When false the stage is skipped
+    # and the clone stays shallow.
+    secret_scan_enabled: bool = Field(default=True)
+    # How many commits of history to clone + scan (``--log-opts="-n N"``).
+    secret_history_depth: int = Field(default=256)
+
     # Compose network the reporter joins so it can reach
     # ``clickhouse:8123``, ``rustfs:9000``, and ``api:8000`` by service name.
     scan_job_network: str = Field(default="ippon_default")

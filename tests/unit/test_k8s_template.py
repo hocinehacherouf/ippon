@@ -22,7 +22,9 @@ from ippon.scanner.runner.k8s import _render_job_manifest
 _K8S_QUANTITY = re.compile(r"^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$")
 
 
-def _spec(scan_id: UUID, org_id: UUID, repo_id: UUID) -> ScanJobSpec:
+def _spec(
+    scan_id: UUID, org_id: UUID, repo_id: UUID, *, secret_scan_enabled: bool = True
+) -> ScanJobSpec:
     return ScanJobSpec(
         scan_id=scan_id,
         org_id=org_id,
@@ -44,6 +46,7 @@ def _spec(scan_id: UUID, org_id: UUID, repo_id: UUID) -> ScanJobSpec:
             "AWS_ACCESS_KEY_ID": "k",
             "AWS_SECRET_ACCESS_KEY": "s",
         },
+        secret_scan_enabled=secret_scan_enabled,
     )
 
 
@@ -102,8 +105,20 @@ def test_labels_present_on_job_and_pod() -> None:
         assert job["spec"]["template"]["metadata"]["labels"][k] == v
 
 
-def test_init_containers_are_clone_syft_grype_in_order() -> None:
+def test_init_containers_include_secret_scan_in_order() -> None:
     spec = _spec(uuid4(), uuid4(), uuid4())
+    job, _, _ = _render_job_manifest(
+        spec,
+        namespace="ippon-scans",
+        service_account="ippon-scanner",
+        grype_db_pvc="grype-db-shared",
+    )
+    init_names = [c["name"] for c in job["spec"]["template"]["spec"]["initContainers"]]
+    assert init_names == ["clone", "syft", "grype", "secret-scan"]
+
+
+def test_secret_scan_omitted_when_disabled() -> None:
+    spec = _spec(uuid4(), uuid4(), uuid4(), secret_scan_enabled=False)
     job, _, _ = _render_job_manifest(
         spec,
         namespace="ippon-scans",

@@ -61,6 +61,8 @@ class CallbackPayload(BaseModel):
     grype_db_version: str | None = None
     dependency_count: int = 0
     finding_count: int = 0
+    secret_finding_count: int = 0
+    verified_secret_count: int = 0
     severity_counts: dict[str, int] = Field(default_factory=dict)
     failed_step: str | None = None
     error_message: str | None = None

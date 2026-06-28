@@ -79,6 +79,10 @@ def _render_job_manifest(
         active_deadline_seconds=spec.active_deadline_seconds,
         mem_limit=spec.mem_limit,
         cpu_limit=str(spec.cpu_count),
+        secret_scan_image=spec.secret_scan_image,
+        secret_scan_enabled=spec.secret_scan_enabled,
+        secret_history_depth=spec.secret_history_depth,
+        clone_depth=(spec.secret_history_depth if spec.secret_scan_enabled else 1),
     )
     parsed = yaml.safe_load(rendered)
     if not isinstance(parsed, dict):

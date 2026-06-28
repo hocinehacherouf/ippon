@@ -40,16 +40,52 @@ _LABEL_ORG = "ippon.org-id"
 _LABEL_REPO = "ippon.repo-id"
 _LABEL_STEP = "ippon.step"
 
-_CLONE_ENTRYPOINT_CMD = (
-    "set -e; "
-    'if [ -n "$IPPON_REF" ] && [ "$IPPON_REF" != "HEAD" ]; then '
-    '  git clone --depth=1 --branch "$IPPON_REF" "$IPPON_REPO_URL" /workspace; '
-    "else "
-    '  git clone --depth=1 "$IPPON_REPO_URL" /workspace; '
-    "fi; "
-    "git -C /workspace rev-parse HEAD > /artifacts/commit-sha.txt; "
-    "echo cloned ${IPPON_REPO_URL} ref=${IPPON_REF:-default} sha=$(cat /artifacts/commit-sha.txt)"
-)
+
+def _clone_entrypoint_cmd(depth: int) -> str:
+    return (
+        "set -e; "
+        'if [ -n "$IPPON_REF" ] && [ "$IPPON_REF" != "HEAD" ]; then '
+        f'  git clone --depth={depth} --branch "$IPPON_REF" "$IPPON_REPO_URL" /workspace; '
+        "else "
+        f'  git clone --depth={depth} "$IPPON_REPO_URL" /workspace; '
+        "fi; "
+        "git -C /workspace rev-parse HEAD > /artifacts/commit-sha.txt; "
+        "echo cloned ${IPPON_REPO_URL} ref=${IPPON_REF:-default} sha=$(cat /artifacts/commit-sha.txt)"
+    )
+
+
+def _clone_depth(spec: ScanJobSpec) -> int:
+    """Deep enough for secret history when enabled; shallow otherwise."""
+    return spec.secret_history_depth if spec.secret_scan_enabled else 1
+
+
+def _betterleaks_cmd(spec: ScanJobSpec) -> list[str]:
+    """betterleaks args. ``--exit-code 0`` so 'leaks found' is a success;
+    ``--redact`` so raw secrets never leave the container."""
+    return [
+        "git",
+        "/workspace",
+        "--report-format",
+        "json",
+        "--report-path",
+        "/artifacts/secrets.json",
+        "--redact",
+        "--exit-code",
+        "0",
+        f"--log-opts=-n {spec.secret_history_depth}",
+    ]
+
+
+def _secret_scan_network(spec: ScanJobSpec) -> str:
+    """Always network-isolated, like Syft/Grype.
+
+    Live verification (betterleaks ``validate`` CEL config) is not wired yet,
+    so we never open egress — ``spec.verify_secrets`` is reserved and inert
+    until a validation-enabled betterleaks config ships. Returning ``"bridge"``
+    here would open egress that nothing uses. ``spec`` is kept on the signature
+    so the verify path can re-enable egress without touching call sites.
+    """
+    return "none"
 
 
 @dataclass
@@ -80,6 +116,8 @@ class DockerJobRunner:
             await self._ensure_image(docker, spec.syft_image)
             await self._ensure_image(docker, spec.grype_image)
             await self._ensure_image(docker, spec.reporter_image)
+            if spec.secret_scan_enabled:
+                await self._ensure_image(docker, spec.secret_scan_image)
 
             await self._create_volume(docker, ws_volume, labels)
             await self._create_volume(docker, ar_volume, labels)
@@ -92,7 +130,7 @@ class DockerJobRunner:
                     docker,
                     name="clone",
                     image=spec.clone_image,
-                    cmd=["sh", "-c", _CLONE_ENTRYPOINT_CMD],
+                    cmd=["sh", "-c", _clone_entrypoint_cmd(_clone_depth(spec))],
                     entrypoint=[],  # override the alpine/git default entrypoint
                     env={"IPPON_REPO_URL": spec.repo_url, "IPPON_REF": spec.ref},
                     volumes={ws_volume: "/workspace", ar_volume: "/artifacts"},
@@ -162,6 +200,26 @@ class DockerJobRunner:
                     )
                     if step.exit_code != 0:
                         failed_step, failed_reason = "grype", step.logs_tail
+
+                # 3b. Secret scan (betterleaks). "Leaks found" exits 0; any
+                # non-zero is a real error. Mounts the repo read-only.
+                if failed_step is None and spec.secret_scan_enabled:
+                    step = await self._run_step(
+                        docker,
+                        name="secret-scan",
+                        image=spec.secret_scan_image,
+                        cmd=_betterleaks_cmd(spec),
+                        env={},
+                        volumes={ws_volume: ("/workspace", "ro"), ar_volume: "/artifacts"},
+                        network_mode=_secret_scan_network(spec),
+                        labels={**labels, _LABEL_STEP: "secret-scan"},
+                        name_suffix=f"secret-scan-{scan_id_short}",
+                        mem_limit=spec.mem_limit,
+                        cpu_count=spec.cpu_count,
+                        deadline_seconds=spec.active_deadline_seconds,
+                    )
+                    if step.exit_code != 0:
+                        failed_step, failed_reason = "secret-scan", step.logs_tail
 
                 # 4. Reporter — always runs, with FAILED env on short-circuit.
                 reporter_env: dict[str, str] = {

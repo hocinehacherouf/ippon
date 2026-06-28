@@ -25,6 +25,7 @@ from ippon.api.deps import CHDep, CurrentUser, DbSession, SettingsDep
 from ippon.models import JobRunnerBackend, ScanJob, ScanJobStatus, ScanTrigger
 from ippon.schemas.finding import Finding, FindingPage
 from ippon.schemas.scan import ScanRequest, ScanResponse
+from ippon.schemas.secret import SecretFinding, SecretFindingPage
 from ippon.security import generate_callback_secret
 from ippon.worker.celery_app import celery_app
 
@@ -165,3 +166,68 @@ async def list_findings(
         )
 
     return FindingPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get(
+    "/{scan_id}/secrets",
+    response_model=SecretFindingPage,
+    summary="List secret findings for a scan, paginated.",
+)
+async def list_secrets(
+    scan_id: UUID,
+    _: CurrentUser,
+    ch: CHDep,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    validation_status: Annotated[
+        str | None,
+        Query(
+            description="Filter by validation status (verified/unverified/invalid/unknown/error)."
+        ),
+    ] = None,
+) -> SecretFindingPage:
+    where = "scan_id = {scan_id:UUID}"
+    params: dict[str, Any] = {"scan_id": str(scan_id), "limit": limit, "offset": offset}
+    if validation_status:
+        where += " AND validation_status = {validation_status:String}"
+        params["validation_status"] = validation_status
+
+    count_sql = f"SELECT count() FROM secret_findings WHERE {where}"
+    rows_sql = f"""
+        SELECT scan_id, rule_id, description, file, start_line, end_line,
+               match, fingerprint, author, email, committed_at, tags,
+               verified, validation_status, is_historical, scanned_at
+        FROM secret_findings
+        WHERE {where}
+        ORDER BY verified DESC, is_historical ASC, rule_id ASC
+        LIMIT {{limit:UInt32}} OFFSET {{offset:UInt32}}
+    """
+
+    total_row = await asyncio.to_thread(ch.query, count_sql, parameters=params)
+    total = int(total_row.result_rows[0][0]) if total_row.result_rows else 0
+
+    page = await asyncio.to_thread(ch.query, rows_sql, parameters=params)
+    items: list[SecretFinding] = []
+    for row in page.result_rows:
+        items.append(
+            SecretFinding(
+                scan_id=row[0],
+                rule_id=row[1],
+                description=row[2],
+                file=row[3],
+                start_line=row[4],
+                end_line=row[5],
+                match=row[6],
+                fingerprint=row[7],
+                author=row[8],
+                email=row[9],
+                committed_at=row[10],
+                tags=list(row[11]) if row[11] is not None else [],
+                verified=bool(row[12]),
+                validation_status=row[13],
+                is_historical=bool(row[14]),
+                scanned_at=row[15],
+            )
+        )
+
+    return SecretFindingPage(items=items, total=total, limit=limit, offset=offset)

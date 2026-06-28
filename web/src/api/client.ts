@@ -87,6 +87,39 @@ export interface FindingPage {
   offset: number;
 }
 
+export type ValidationStatus =
+  | "verified"
+  | "unverified"
+  | "invalid"
+  | "unknown"
+  | "error";
+
+export interface SecretFinding {
+  scan_id: string;
+  rule_id: string;
+  description: string;
+  file: string;
+  start_line: number;
+  end_line: number;
+  match: string;
+  fingerprint: string;
+  author: string;
+  email: string;
+  committed_at: string | null;
+  tags: string[];
+  verified: boolean;
+  validation_status: ValidationStatus;
+  is_historical: boolean;
+  scanned_at: string;
+}
+
+export interface SecretFindingPage {
+  items: SecretFinding[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export function listRepos(): Promise<RepositoryList> {
   return fetcher<RepositoryList>({ url: "/repos", method: "GET" });
 }
@@ -110,6 +143,25 @@ export function listFindings(args: ListFindingsArgs): Promise<FindingPage> {
       limit: args.limit,
       offset: args.offset,
       severity: args.severity,
+    },
+  });
+}
+
+export interface ListSecretsArgs {
+  scanId: string;
+  limit?: number;
+  offset?: number;
+  validationStatus?: ValidationStatus;
+}
+
+export function listSecrets(args: ListSecretsArgs): Promise<SecretFindingPage> {
+  return fetcher<SecretFindingPage>({
+    url: `/scans/${args.scanId}/secrets`,
+    method: "GET",
+    params: {
+      limit: args.limit,
+      offset: args.offset,
+      validation_status: args.validationStatus,
     },
   });
 }

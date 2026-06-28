@@ -11,10 +11,12 @@ import { useState } from "react";
 import {
   getScan,
   listFindings,
+  listSecrets,
   type Finding,
+  type SecretFinding,
   type Severity,
 } from "@/api/client";
-import { SeverityBadge, StatusBadge } from "@/components/ui/badge";
+import { Badge, SeverityBadge, StatusBadge, VerifiedBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatDateTime, formatDuration } from "@/lib/utils";
@@ -54,6 +56,53 @@ const columns = [
       const v = info.getValue();
       return v == null ? <span className="text-zinc-400">—</span> : <span>{v.toFixed(1)}</span>;
     },
+  }),
+];
+
+const secretColumnHelper = createColumnHelper<SecretFinding>();
+
+const secretColumns = [
+  secretColumnHelper.accessor("validation_status", {
+    header: "Status",
+    cell: (info) => <VerifiedBadge status={info.getValue()} />,
+  }),
+  secretColumnHelper.accessor("rule_id", {
+    header: "Rule",
+    cell: (info) => (
+      <span className="font-mono text-xs text-zinc-900">{info.getValue()}</span>
+    ),
+  }),
+  secretColumnHelper.accessor("match", {
+    header: "Match",
+    cell: (info) => (
+      <span className="font-mono text-xs text-zinc-600">{info.getValue()}</span>
+    ),
+  }),
+  secretColumnHelper.display({
+    id: "location",
+    header: "Location",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs text-zinc-600">
+        {row.original.file}:{row.original.start_line}
+      </span>
+    ),
+  }),
+  secretColumnHelper.display({
+    id: "commit",
+    header: "Commit",
+    cell: ({ row }) => (
+      <span className="text-zinc-500">
+        {row.original.is_historical ? (
+          <Badge tone="muted">historical</Badge>
+        ) : (
+          <span className="text-xs">HEAD</span>
+        )}
+      </span>
+    ),
+  }),
+  secretColumnHelper.accessor("committed_at", {
+    header: "Committed",
+    cell: (info) => <span className="text-zinc-500">{formatDateTime(info.getValue())}</span>,
   }),
 ];
 
@@ -98,6 +147,18 @@ function ScanPage() {
   const table = useReactTable({
     data: findingsQuery.data?.items ?? [],
     columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const secretsQuery = useQuery({
+    queryKey: ["secrets", id],
+    queryFn: () => listSecrets({ scanId: id, limit: 200 }),
+    enabled: scanQuery.data?.status === "succeeded",
+  });
+
+  const secretsTable = useReactTable({
+    data: secretsQuery.data?.items ?? [],
+    columns: secretColumns,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -211,6 +272,45 @@ function ScanPage() {
             Next
           </Button>
         </div>
+      </div>
+      <div className="space-y-3">
+        <h2 className="font-mono text-sm uppercase tracking-wide text-zinc-500">
+          Secrets {secretsQuery.data ? `(${secretsQuery.data.total})` : ""}
+        </h2>
+        <Table>
+          <THead>
+            {secretsTable.getHeaderGroups().map((hg) => (
+              <TR key={hg.id}>
+                {hg.headers.map((h) => (
+                  <TH key={h.id}>{flexRender(h.column.columnDef.header, h.getContext())}</TH>
+                ))}
+              </TR>
+            ))}
+          </THead>
+          <TBody>
+            {secretsQuery.isLoading && (
+              <TR>
+                <TD colSpan={secretColumns.length} className="text-center text-zinc-400 py-8">
+                  loading…
+                </TD>
+              </TR>
+            )}
+            {!secretsQuery.isLoading && secretsTable.getRowModel().rows.length === 0 && (
+              <TR>
+                <TD colSpan={secretColumns.length} className="text-center text-zinc-400 py-8">
+                  No secrets detected.
+                </TD>
+              </TR>
+            )}
+            {secretsTable.getRowModel().rows.map((row) => (
+              <TR key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TD key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TD>
+                ))}
+              </TR>
+            ))}
+          </TBody>
+        </Table>
       </div>
     </section>
   );

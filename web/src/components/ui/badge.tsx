@@ -63,3 +63,22 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
   const tone = STATUS_TONE[status as keyof typeof STATUS_TONE] ?? "neutral";
   return <Badge tone={tone}>{status}</Badge>;
 }
+
+const VALIDATION_TONE = {
+  verified: "critical", // live secret — highest concern (red)
+  invalid: "low", // checked and confirmed dead (green)
+  error: "medium", // verification errored (amber)
+  unverified: "muted",
+  unknown: "muted",
+} as const;
+
+const VALIDATION_LABEL: Record<string, string> = {
+  verified: "live",
+  invalid: "dead",
+};
+
+export function VerifiedBadge({ status }: { status: string }) {
+  const tone = VALIDATION_TONE[status as keyof typeof VALIDATION_TONE] ?? "muted";
+  const label = VALIDATION_LABEL[status] ?? status;
+  return <Badge tone={tone}>{label}</Badge>;
+}

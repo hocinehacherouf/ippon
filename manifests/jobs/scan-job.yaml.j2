@@ -60,9 +60,9 @@ spec:
             - |
               set -e
               if [ -n "$IPPON_REF" ] && [ "$IPPON_REF" != "HEAD" ]; then
-                git clone --depth=1 --branch "$IPPON_REF" "$IPPON_REPO_URL" /workspace
+                git clone --depth={{ clone_depth }} --branch "$IPPON_REF" "$IPPON_REPO_URL" /workspace
               else
-                git clone --depth=1 "$IPPON_REPO_URL" /workspace
+                git clone --depth={{ clone_depth }} "$IPPON_REPO_URL" /workspace
               fi
               git -C /workspace rev-parse HEAD > /artifacts/commit-sha.txt
               echo "cloned $IPPON_REPO_URL ref=${IPPON_REF:-default} sha=$(cat /artifacts/commit-sha.txt)"
@@ -109,6 +109,30 @@ spec:
           volumeMounts:
             - { name: artifacts, mountPath: /artifacts }
             - { name: grype-db,  mountPath: /grype-db, readOnly: true }
+{% if secret_scan_enabled %}
+        - name: secret-scan
+          image: {{ secret_scan_image }}
+          imagePullPolicy: IfNotPresent
+          # "leaks found" exits 0 (--exit-code 0); --redact keeps raw
+          # secrets out of the report. Repo mounted read-only.
+          args:
+            - "git"
+            - "/workspace"
+            - "--report-format"
+            - "json"
+            - "--report-path"
+            - "/artifacts/secrets.json"
+            - "--redact"
+            - "--exit-code"
+            - "0"
+            - "--log-opts=-n {{ secret_history_depth }}"
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "{{ mem_limit }}", cpu: "{{ cpu_limit }}" }
+          volumeMounts:
+            - { name: workspace, mountPath: /workspace, readOnly: true }
+            - { name: artifacts, mountPath: /artifacts }
+{% endif %}
       containers:
         - name: reporter
           image: {{ reporter_image }}

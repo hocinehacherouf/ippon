@@ -1,0 +1,42 @@
+[
+  {
+    "Description": "AWS Access Key",
+    "StartLine": 3,
+    "EndLine": 3,
+    "StartColumn": 1,
+    "EndColumn": 40,
+    "Match": "aws_access_key_id=REDACTED",
+    "Secret": "REDACTED",
+    "File": "config/old.env",
+    "SymlinkFile": "",
+    "Commit": "1111111111111111111111111111111111111111",
+    "Entropy": 3.5,
+    "Author": "Old Dev",
+    "Email": "old@example.com",
+    "Date": "2024-01-02T03:04:05Z",
+    "Message": "add config",
+    "Tags": [],
+    "RuleID": "aws-access-token",
+    "Fingerprint": "1111111111111111111111111111111111111111:config/old.env:aws-access-token:3"
+  },
+  {
+    "Description": "Generic API Key",
+    "StartLine": 10,
+    "EndLine": 10,
+    "StartColumn": 5,
+    "EndColumn": 48,
+    "Match": "api_key = REDACTED",
+    "Secret": "REDACTED",
+    "File": "src/app.py",
+    "SymlinkFile": "",
+    "Commit": "2222222222222222222222222222222222222222",
+    "Entropy": 4.2,
+    "Author": "Cur Dev",
+    "Email": "cur@example.com",
+    "Date": "2024-06-01T00:00:00Z",
+    "Message": "wip",
+    "Tags": ["key", "generic"],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "2222222222222222222222222222222222222222:src/app.py:generic-api-key:10"
+  }
+]

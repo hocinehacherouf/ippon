@@ -39,3 +39,13 @@ class ScanPolicy(TimestampMixin, Base):
     cron_schedule: Mapped[str | None] = mapped_column(String(64), nullable=True)
     max_runtime_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # --- secret scanning -------------------------------------------------
+    secret_scan_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    verify_secrets: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    secret_history_depth: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=256, server_default="256"
+    )

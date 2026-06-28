@@ -92,6 +92,17 @@ class ScanJobSpec:
     mem_limit: str = "2Gi"
     cpu_count: float = 1.0
 
+    # --- secret scanning -------------------------------------------------
+    # betterleaks image for the secret-scan stage.
+    secret_scan_image: str = "ghcr.io/betterleaks/betterleaks:v1.6.0"
+    # Whether to run the secret-scan stage at all (skips the stage + keeps
+    # the clone shallow when false).
+    secret_scan_enabled: bool = True
+    # Whether to attempt live verification (needs egress; off by default).
+    verify_secrets: bool = False
+    # Commits of history to clone + scan.
+    secret_history_depth: int = 256
+
     # Hard ceiling on total wall-clock for the chain.
     active_deadline_seconds: int = 900
 
