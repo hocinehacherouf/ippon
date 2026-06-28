@@ -58,13 +58,22 @@ class InlineJobRunner:
         return None
 
     @staticmethod
-    def _clone(spec: ScanJobSpec, workspace: Path, artifacts: Path) -> None:
-        LOG.info("[inline] cloning %s ref=%s", spec.repo_url, spec.ref)
-        cmd = ["git", "clone", "--depth=1"]
+    def _clone_cmd(spec: ScanJobSpec, workspace: Path) -> list[str]:
+        depth = spec.secret_history_depth if spec.secret_scan_enabled else 1
+        cmd = ["git", "clone", f"--depth={depth}"]
         if spec.ref and spec.ref != "HEAD":
             cmd += ["--branch", spec.ref]
         cmd += [spec.repo_url, str(workspace)]
-        subprocess.run(cmd, check=True, capture_output=True)
+        return cmd
+
+    @staticmethod
+    def _clone(spec: ScanJobSpec, workspace: Path, artifacts: Path) -> None:
+        LOG.info("[inline] cloning %s ref=%s", spec.repo_url, spec.ref)
+        subprocess.run(
+            InlineJobRunner._clone_cmd(spec, workspace),
+            check=True,
+            capture_output=True,
+        )
         sha = subprocess.run(
             ["git", "-C", str(workspace), "rev-parse", "HEAD"],
             check=True,
