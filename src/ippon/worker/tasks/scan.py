@@ -19,10 +19,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from celery import shared_task
+from sqlalchemy import select
 
 from ippon.config import Settings, get_settings
 from ippon.db import make_sync_engine, make_sync_session_factory, sync_session_scope
-from ippon.models import Repository, ScanJob, ScanJobStatus
+from ippon.models import Repository, ScanJob, ScanJobStatus, ScanPolicy
 from ippon.scanner.pipeline import build_scan_job_spec
 from ippon.scanner.runner.base import JobRunner, ScanJobSpec
 from ippon.scanner.runner.docker import DockerJobRunner
@@ -75,7 +76,17 @@ def run_scan(self, scan_id: str) -> dict[str, str]:  # type: ignore[no-untyped-d
             scan.status = ScanJobStatus.running
             scan.started_at = datetime.now(UTC)
             backend_name = scan.backend.value
-            spec = build_scan_job_spec(settings=settings, scan=scan, repo=repo)
+            policy = session.execute(
+                select(ScanPolicy).where(ScanPolicy.repository_id == repo.id)
+            ).scalars().first()
+            if policy is None:
+                policy = session.execute(
+                    select(ScanPolicy).where(
+                        ScanPolicy.org_id == repo.org_id,
+                        ScanPolicy.repository_id.is_(None),
+                    )
+                ).scalars().first()
+            spec = build_scan_job_spec(settings=settings, scan=scan, repo=repo, policy=policy)
 
         assert spec is not None and backend_name is not None
         runner = _make_runner(backend_name, settings)
