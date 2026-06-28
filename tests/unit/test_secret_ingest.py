@@ -60,6 +60,9 @@ def test_secret_rows_store_only_redacted_match() -> None:
     for r in rows:
         # Security invariant: stored value is redacted; no key holds raw.
         assert "REDACTED" in r["match"]
+        # The bare Secret field is literally "REDACTED"; the Match line is
+        # richer — assert we stored Match, never the raw Secret value.
+        assert r["match"] != "REDACTED"
         assert "Secret" not in r
         assert set(r.keys()) == {
             "scan_id", "org_id", "repo_id", "commit_sha", "rule_id", "description",

@@ -297,7 +297,7 @@ def secret_finding_rows(
                 "tags": [str(t) for t in (entry.get("Tags") or [])],
                 "verified": verified,
                 "validation_status": status,
-                "is_historical": bool(commit and head_sha and commit != head_sha),
+                "is_historical": commit != head_sha,
                 "scanned_at": ctx.scanned_at,
             }
         )
