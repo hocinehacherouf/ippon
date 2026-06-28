@@ -28,7 +28,7 @@ def test_migration_0002_is_discovered() -> None:
 def test_migration_0002_statements_are_wellformed() -> None:
     apply = _load_apply()
     stmts = apply.split_statements(MIGRATION.read_text(encoding="utf-8"))
-    assert all(s.strip() for s in stmts), "no empty statements"
+    assert len(stmts) == 3
     assert any("CREATE TABLE IF NOT EXISTS secret_findings" in s for s in stmts)
     assert any("ADD COLUMN IF NOT EXISTS secret_finding_count" in s for s in stmts)
     assert any("ADD COLUMN IF NOT EXISTS verified_secret_count" in s for s in stmts)
