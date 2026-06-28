@@ -58,3 +58,22 @@ def test_scanjobspec_secret_fields_have_defaults() -> None:
     assert verify_spec.secret_scan_enabled is False
     assert verify_spec.verify_secrets is True
     assert verify_spec.secret_history_depth == 50
+
+
+def test_scanjobspec_secret_scan_image_has_default() -> None:
+    spec = ScanJobSpec(
+        scan_id=uuid4(),
+        org_id=uuid4(),
+        repo_id=uuid4(),
+        repo_url="https://github.com/anchore/syft",
+        ref="HEAD",
+        clone_image="alpine/git:latest",
+        syft_image="anchore/syft:latest",
+        grype_image="anchore/grype:latest",
+        reporter_image="ippon/backend:dev",
+        grype_db_volume="ippon_grype_db",
+        network="ippon_default",
+        callback_url="http://api:8000/internal/scans/x/callback",
+        callback_secret="s3cret",
+    )
+    assert "betterleaks" in spec.secret_scan_image
