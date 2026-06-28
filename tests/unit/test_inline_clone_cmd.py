@@ -10,22 +10,22 @@ from ippon.scanner.runner.inline import InlineJobRunner
 
 
 def _spec(**overrides: object) -> ScanJobSpec:
-    base: dict[str, object] = dict(
-        scan_id=uuid4(),
-        org_id=uuid4(),
-        repo_id=uuid4(),
-        repo_url="https://github.com/anchore/syft",
-        ref="HEAD",
-        clone_image="alpine/git:latest",
-        syft_image="anchore/syft:latest",
-        grype_image="anchore/grype:latest",
-        reporter_image="ippon/backend:dev",
-        grype_db_volume="ippon_grype_db",
-        network="ippon_default",
-        callback_url="http://api:8000/internal/scans/x/callback",
-        callback_secret="s3cret",
-        secret_scan_image="ghcr.io/betterleaks/betterleaks:v1.6.0",
-    )
+    base: dict[str, object] = {
+        "scan_id": uuid4(),
+        "org_id": uuid4(),
+        "repo_id": uuid4(),
+        "repo_url": "https://github.com/anchore/syft",
+        "ref": "HEAD",
+        "clone_image": "alpine/git:latest",
+        "syft_image": "anchore/syft:latest",
+        "grype_image": "anchore/grype:latest",
+        "reporter_image": "ippon/backend:dev",
+        "grype_db_volume": "ippon_grype_db",
+        "network": "ippon_default",
+        "callback_url": "http://api:8000/internal/scans/x/callback",
+        "callback_secret": "s3cret",
+        "secret_scan_image": "ghcr.io/betterleaks/betterleaks:v1.6.0",
+    }
     base.update(overrides)
     return ScanJobSpec(**base)  # type: ignore[arg-type]
 

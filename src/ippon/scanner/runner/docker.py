@@ -40,6 +40,7 @@ _LABEL_ORG = "ippon.org-id"
 _LABEL_REPO = "ippon.repo-id"
 _LABEL_STEP = "ippon.step"
 
+
 def _clone_entrypoint_cmd(depth: int) -> str:
     return (
         "set -e; "

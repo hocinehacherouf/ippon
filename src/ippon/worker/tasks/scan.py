@@ -76,16 +76,22 @@ def run_scan(self, scan_id: str) -> dict[str, str]:  # type: ignore[no-untyped-d
             scan.status = ScanJobStatus.running
             scan.started_at = datetime.now(UTC)
             backend_name = scan.backend.value
-            policy = session.execute(
-                select(ScanPolicy).where(ScanPolicy.repository_id == repo.id)
-            ).scalars().first()
+            policy = (
+                session.execute(select(ScanPolicy).where(ScanPolicy.repository_id == repo.id))
+                .scalars()
+                .first()
+            )
             if policy is None:
-                policy = session.execute(
-                    select(ScanPolicy).where(
-                        ScanPolicy.org_id == repo.org_id,
-                        ScanPolicy.repository_id.is_(None),
+                policy = (
+                    session.execute(
+                        select(ScanPolicy).where(
+                            ScanPolicy.org_id == repo.org_id,
+                            ScanPolicy.repository_id.is_(None),
+                        )
                     )
-                ).scalars().first()
+                    .scalars()
+                    .first()
+                )
             spec = build_scan_job_spec(settings=settings, scan=scan, repo=repo, policy=policy)
 
         assert spec is not None and backend_name is not None

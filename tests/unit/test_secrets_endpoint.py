@@ -35,22 +35,22 @@ def client() -> Iterator[TestClient]:
     app = create_app(Settings(ippon_dev_token="test-token"))
     scan_id = uuid4()
     row = [
-        scan_id,                       # scan_id
-        "aws-access-token",            # rule_id
-        "AWS Access Key",              # description
-        "config/old.env",             # file
-        3,                             # start_line
-        3,                             # end_line
+        scan_id,  # scan_id
+        "aws-access-token",  # rule_id
+        "AWS Access Key",  # description
+        "config/old.env",  # file
+        3,  # start_line
+        3,  # end_line
         "aws_access_key_id=REDACTED",  # match
         "1111:config/old.env:aws-access-token:3",  # fingerprint
-        "Old Dev",                     # author
-        "old@example.com",             # email
+        "Old Dev",  # author
+        "old@example.com",  # email
         datetime(2024, 1, 2, tzinfo=UTC),  # committed_at
-        ["k"],                         # tags
-        False,                         # verified
-        "unverified",                  # validation_status
-        True,                          # is_historical
-        datetime.now(UTC),             # scanned_at
+        ["k"],  # tags
+        False,  # verified
+        "unverified",  # validation_status
+        True,  # is_historical
+        datetime.now(UTC),  # scanned_at
     ]
     app.dependency_overrides[get_ch_client] = lambda: _FakeCH(row)
     yield TestClient(app)

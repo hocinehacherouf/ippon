@@ -65,8 +65,23 @@ def test_secret_rows_store_only_redacted_match() -> None:
         assert r["match"] != "REDACTED"
         assert "Secret" not in r
         assert set(r.keys()) == {
-            "scan_id", "org_id", "repo_id", "commit_sha", "rule_id", "description",
-            "file", "start_line", "end_line", "match", "fingerprint", "author",
-            "email", "committed_at", "tags", "verified", "validation_status",
-            "is_historical", "scanned_at",
+            "scan_id",
+            "org_id",
+            "repo_id",
+            "commit_sha",
+            "rule_id",
+            "description",
+            "file",
+            "start_line",
+            "end_line",
+            "match",
+            "fingerprint",
+            "author",
+            "email",
+            "committed_at",
+            "tags",
+            "verified",
+            "validation_status",
+            "is_historical",
+            "scanned_at",
         }
