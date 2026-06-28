@@ -47,6 +47,7 @@ def _main() -> int:
 
     sbom_path = Path(os.environ.get("IPPON_SBOM_PATH", "/artifacts/sbom.json"))
     findings_path = Path(os.environ.get("IPPON_FINDINGS_PATH", "/artifacts/findings.json"))
+    secrets_path = Path(os.environ.get("IPPON_SECRETS_PATH", "/artifacts/secrets.json"))
     commit_sha_path = Path(os.environ.get("IPPON_COMMIT_SHA_PATH", "/artifacts/commit-sha.txt"))
 
     scanned_at = datetime.now(UTC)
@@ -105,6 +106,7 @@ def _main() -> int:
             s3_access_key=_env_required("AWS_ACCESS_KEY_ID"),
             s3_secret_key=_env_required("AWS_SECRET_ACCESS_KEY"),
             scan_started_at=scan_started_at,
+            secrets_path=secrets_path,
         )
     except Exception as exc:  # pylint: disable=broad-except
         log.exception("ingest failed")
@@ -123,6 +125,8 @@ def _main() -> int:
         "grype_db_version": ingest_result.grype_db_version if ingest_result else None,
         "dependency_count": ingest_result.dependency_count if ingest_result else 0,
         "finding_count": ingest_result.finding_count if ingest_result else 0,
+        "secret_finding_count": ingest_result.secret_finding_count if ingest_result else 0,
+        "verified_secret_count": ingest_result.verified_secret_count if ingest_result else 0,
         "severity_counts": ingest_result.severity_counts if ingest_result else {},
         "error_message": error_message,
         "finished_at": datetime.now(UTC).isoformat(),
