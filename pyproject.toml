@@ -43,9 +43,9 @@ reporter = [
 
 [dependency-groups]
 dev = [
-    "ruff~=0.15.15",
+    "ruff~=0.15.20",
     "mypy~=2.1",
-    "pytest~=9.0",
+    "pytest~=9.1",
     "pytest-asyncio~=1.4",
     "pytest-cov~=7.1",
     "pre-commit~=4.6",
