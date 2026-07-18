@@ -80,3 +80,10 @@ def test_structured_error_includes_request_id(client: TestClient) -> None:
     r = client.get("/orgs", headers={"X-Request-Id": "rid-err-1"})
     assert r.status_code == 401
     assert r.json()["error"]["request_id"] == "rid-err-1"
+
+
+def test_dev_token_rejected_in_oidc_mode() -> None:
+    app = create_app(Settings(ippon_dev_token="test-token", ippon_auth_mode="oidc"))
+    c = TestClient(app)
+    r = c.get("/orgs", headers={"Authorization": "Bearer test-token"})
+    assert r.status_code == 401
