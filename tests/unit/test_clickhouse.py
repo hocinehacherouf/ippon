@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import uuid as _uuid
+
 import pytest
 
-from ippon.clickhouse import ClickHouseConnectionParams
+from ippon.clickhouse import ClickHouseConnectionParams, ch_scoped
 
 
 def test_parse_http_url() -> None:
@@ -35,3 +37,11 @@ def test_rejects_non_http_scheme() -> None:
 def test_rejects_missing_host() -> None:
     with pytest.raises(ValueError, match="host"):
         ClickHouseConnectionParams.from_url("http:///main")
+
+
+def test_ch_scoped_injects_org_predicate() -> None:
+    params: dict[str, object] = {}
+    org = _uuid.uuid4()
+    clause = ch_scoped(org, params)
+    assert clause == "org_id = {org:UUID}"
+    assert params["org"] == str(org)
