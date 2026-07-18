@@ -7,6 +7,7 @@ import pytest
 from ippon.security import (
     CURRENT_KID,
     CredentialDecryptionError,
+    DEV_USER_ID,
     authenticate_dev_token,
     compute_hmac_sha256,
     constant_time_str_eq,
@@ -20,7 +21,8 @@ from ippon.security import (
 def test_authenticate_dev_token_accepts_match() -> None:
     principal = authenticate_dev_token("secret-token", "secret-token")
     assert principal is not None
-    assert principal.subject == "dev"
+    assert principal.kind == "dev"
+    assert principal.user_id == DEV_USER_ID
 
 
 def test_authenticate_dev_token_rejects_mismatch() -> None:
