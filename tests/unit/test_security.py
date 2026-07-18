@@ -6,8 +6,8 @@ import pytest
 
 from ippon.security import (
     CURRENT_KID,
-    CredentialDecryptionError,
     DEV_USER_ID,
+    CredentialDecryptionError,
     authenticate_dev_token,
     compute_hmac_sha256,
     constant_time_str_eq,
