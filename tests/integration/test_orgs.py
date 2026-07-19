@@ -22,7 +22,7 @@ from ippon.api.main import create_app
 from ippon.api.orgs_service import count_owners, list_memberships
 from ippon.config import Settings, get_settings
 from ippon.db import async_session_scope, make_async_engine, make_async_session_factory
-from ippon.models import OrgMemberRole
+from ippon.models import Org, OrgMemberRole
 from ippon.security import DEV_ORG_ID, DEV_USER_ID
 
 pytestmark = pytest.mark.integration
@@ -86,3 +86,26 @@ def test_create_org_duplicate_slug_409(client: TestClient) -> None:
     slug = _uniq("dup")
     assert client.post("/orgs", headers=_AUTH, json={"name": "A", "slug": slug}).status_code == 201
     assert client.post("/orgs", headers=_AUTH, json={"name": "B", "slug": slug}).status_code == 409
+
+
+def test_get_patch_delete_org(client: TestClient) -> None:
+    slug = _uniq("crud")
+    org = client.post("/orgs", headers=_AUTH, json={"name": "C", "slug": slug}).json()
+    oid = org["id"]
+    assert client.get(f"/orgs/{oid}", headers=_AUTH).json()["slug"] == slug
+    r = client.patch(f"/orgs/{oid}", headers=_AUTH, json={"name": "Renamed"})
+    assert r.status_code == 200 and r.json()["name"] == "Renamed"
+    assert client.delete(f"/orgs/{oid}", headers=_AUTH).status_code == 204
+    assert client.get(f"/orgs/{oid}", headers=_AUTH).status_code == 404
+
+
+async def test_get_org_non_member_404(client: TestClient, session: AsyncSession) -> None:
+    """An org the dev user is NOT a member of -> 404 (not 403 or 200), same
+    as the other org-scoped routes (mirrors the foreign-org seed in
+    ``test_tenancy_isolation.py``).
+    """
+    org = Org(slug=_uniq("foreign"), name="Foreign")
+    session.add(org)
+    await session.commit()
+    r = client.get(f"/orgs/{org.id}", headers=_AUTH)
+    assert r.status_code == 404

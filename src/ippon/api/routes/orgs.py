@@ -3,21 +3,26 @@
 ``GET /orgs`` and ``POST /orgs`` are authn-only (no ``require_org_member``):
 any authenticated caller can list the orgs they belong to, and creating an
 org makes the caller its first member, with the ``owner`` role.
-``GET /orgs/{org_id}`` remains a 501 stub — Task 5 replaces it with the real
-org-detail route.
+
+``detail_router`` is mounted under ``/orgs/{org}`` in ``main.py`` (with
+``require_org_member`` applied at the mount point) and provides the
+org-detail routes: ``GET`` (any member), ``PATCH``/``DELETE`` (owner-gated
+via ``require_role``).
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
+from ippon.api.authz import OrgCtx, require_role
 from ippon.api.deps import CurrentUser, DbSession
 from ippon.api.orgs_service import list_memberships
 from ippon.models import Org, OrgMember, OrgMemberRole
-from ippon.schemas.org import OrgCreate, OrgList, OrgResponse
+from ippon.schemas.org import OrgCreate, OrgList, OrgResponse, OrgUpdate
 
 router = APIRouter(prefix="/orgs", tags=["orgs"])
+detail_router = APIRouter(prefix="/orgs/{org}", tags=["orgs"])
 
 
 @router.get("", response_model=OrgList, summary="List the caller's orgs")
@@ -44,10 +49,34 @@ async def create_org(body: OrgCreate, user: CurrentUser, db: DbSession) -> OrgRe
     return OrgResponse(id=org.id, slug=org.slug, name=org.name, role=OrgMemberRole.owner)
 
 
-@router.get(
-    "/{org_id}",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-    summary="Get org",
+@detail_router.get("", response_model=OrgResponse, summary="Get an org")
+async def get_org(ctx: OrgCtx, db: DbSession) -> OrgResponse:
+    org = await db.get(Org, ctx.org_id)
+    assert org is not None  # require_org_member already proved it exists
+    return OrgResponse(id=org.id, slug=org.slug, name=org.name, role=ctx.role)
+
+
+@detail_router.patch(
+    "",
+    response_model=OrgResponse,
+    dependencies=[Depends(require_role(OrgMemberRole.owner))],
+    summary="Rename an org",
 )
-async def get_org(org_id: str, _: CurrentUser) -> dict[str, str]:
-    return {"status": "not_implemented", "org_id": org_id}
+async def update_org(body: OrgUpdate, ctx: OrgCtx, db: DbSession) -> OrgResponse:
+    org = await db.get(Org, ctx.org_id)
+    assert org is not None
+    org.name = body.name
+    await db.flush()
+    return OrgResponse(id=org.id, slug=org.slug, name=org.name, role=ctx.role)
+
+
+@detail_router.delete(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(OrgMemberRole.owner))],
+    summary="Delete an org",
+)
+async def delete_org(ctx: OrgCtx, db: DbSession) -> None:
+    org = await db.get(Org, ctx.org_id)
+    assert org is not None
+    await db.delete(org)
