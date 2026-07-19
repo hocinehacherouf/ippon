@@ -13,11 +13,15 @@ Resolution order in :func:`resolve_scan_target`:
    with ``credential_type=none`` and no stored secret, so zero-config
    public-repo scans keep working.
 
-Multi-tenancy is still single-org for the scaffold (one ``default`` org).
+The org itself is resolved by the caller (route-level ``OrgCtx``) and passed
+in explicitly as ``org_id`` — this module no longer picks a default org for
+scan targets. ``get_or_create_default_org`` remains, used only to seed/find
+the dev org (``ensure_dev_identity``).
 """
 
 from __future__ import annotations
 
+import uuid
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -190,14 +194,20 @@ async def resolve_scan_target(
     session: AsyncSession,
     clone_url: str,
     *,
+    org_id: uuid.UUID,
     source_connection_id: UUID | None = None,
 ) -> tuple[Org, SourceConnection, Repository]:
-    """org + source + repo for a clone URL. Used by ``POST /scans``.
+    """org + source + repo for a clone URL, scoped to ``org_id``.
 
-    Raises :class:`ConnectionNotFoundError` or :class:`AmbiguousConnectionError` —
-    the route translates these to 404 / 409 respectively.
+    Used by ``POST /orgs/{org}/scans``. Raises :class:`ConnectionNotFoundError`
+    if ``org_id`` doesn't resolve to a real org, or if an explicit
+    ``source_connection_id`` doesn't belong to it; raises
+    :class:`AmbiguousConnectionError` if several connections match the clone
+    host. The route translates these to 404 / 409 respectively.
     """
-    org = await get_or_create_default_org(session)
+    org = await session.get(Org, org_id)
+    if org is None:
+        raise ConnectionNotFoundError(str(org_id))
     source = await _resolve_source(session, org, clone_url, source_connection_id)
     repo = await get_or_create_repository(session, org=org, source=source, clone_url=clone_url)
     return org, source, repo

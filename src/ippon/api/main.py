@@ -158,7 +158,11 @@ def _install_routes(app: FastAPI) -> None:
         prefix="/orgs/{org}",
         dependencies=[Depends(require_org_member)],
     )
-    app.include_router(scans_routes.router)
+    app.include_router(
+        scans_routes.router,
+        prefix="/orgs/{org}",
+        dependencies=[Depends(require_org_member)],
+    )
     app.include_router(admin_routes.router)
     app.include_router(internal_routes.router)
     app.include_router(github_webhooks.router)
