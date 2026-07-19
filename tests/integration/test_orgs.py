@@ -69,3 +69,20 @@ async def test_me_lists_memberships(client: TestClient) -> None:
 
 def test_me_requires_auth(client: TestClient) -> None:
     assert client.get("/me").status_code == 401
+
+
+def test_create_org_makes_caller_owner(client: TestClient) -> None:
+    slug = _uniq("acme")
+    r = client.post("/orgs", headers=_AUTH, json={"name": "Acme", "slug": slug})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["slug"] == slug and body["role"] == "owner"
+    # appears in my list
+    lst = client.get("/orgs", headers=_AUTH).json()
+    assert any(o["slug"] == slug for o in lst["items"])
+
+
+def test_create_org_duplicate_slug_409(client: TestClient) -> None:
+    slug = _uniq("dup")
+    assert client.post("/orgs", headers=_AUTH, json={"name": "A", "slug": slug}).status_code == 201
+    assert client.post("/orgs", headers=_AUTH, json={"name": "B", "slug": slug}).status_code == 409
