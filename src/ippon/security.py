@@ -22,23 +22,34 @@ import base64
 import hashlib
 import hmac
 import secrets
+import uuid
 from dataclasses import dataclass
+from typing import Literal
 
 from cryptography.fernet import Fernet, InvalidToken
 
 
 @dataclass(frozen=True)
 class Principal:
-    """The authenticated caller. Mirrors the shape of OIDC claims we'll surface later."""
+    """The authenticated caller."""
 
-    subject: str
+    user_id: uuid.UUID
     email: str | None
-    is_service: bool
+    kind: Literal["user", "token", "dev"]
+    org_hint: uuid.UUID | None  # bound org for token/dev principals; None for OIDC users
 
 
-# --- bearer ---------------------------------------------------------------
+# --- dev identity (deterministic so tests + seeds agree) ------------------
+DEV_USER_ID = uuid.UUID(int=0xDE)
+DEV_ORG_ID = uuid.UUID(int=0x06)
+DEV_ORG_SLUG = "default"
 
-DEV_PRINCIPAL = Principal(subject="dev", email="dev@ippon.local", is_service=True)
+DEV_PRINCIPAL = Principal(
+    user_id=DEV_USER_ID,
+    email="dev@ippon.local",
+    kind="dev",
+    org_hint=DEV_ORG_ID,
+)
 
 
 def authenticate_dev_token(presented: str, expected: str) -> Principal | None:

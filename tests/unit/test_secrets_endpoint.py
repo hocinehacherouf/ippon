@@ -1,4 +1,4 @@
-"""GET /scans/{id}/secrets with a stubbed ClickHouse client."""
+"""GET /orgs/{org}/scans/{id}/secrets with a stubbed ClickHouse client."""
 
 from __future__ import annotations
 
@@ -8,11 +8,15 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from ippon.api.authz import OrgContext, require_org_member
 from ippon.api.deps import get_ch_client
 from ippon.api.main import create_app
 from ippon.config import Settings
+from ippon.models import OrgMemberRole
+from ippon.security import DEV_ORG_ID, DEV_PRINCIPAL
 
 
 class _FakeResult:
@@ -31,8 +35,8 @@ class _FakeCH:
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    app = create_app(Settings(ippon_dev_token="test-token"))
+def app() -> Iterator[FastAPI]:
+    application = create_app(Settings(ippon_dev_token="test-token"))
     scan_id = uuid4()
     row = [
         scan_id,  # scan_id
@@ -52,14 +56,26 @@ def client() -> Iterator[TestClient]:
         True,  # is_historical
         datetime.now(UTC),  # scanned_at
     ]
-    app.dependency_overrides[get_ch_client] = lambda: _FakeCH(row)
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    application.dependency_overrides[get_ch_client] = lambda: _FakeCH(row)
+    yield application
+    application.dependency_overrides.clear()
 
 
-def test_list_secrets_returns_redacted_rows(client: TestClient) -> None:
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)
+
+
+def test_list_secrets_returns_redacted_rows(app: FastAPI, client: TestClient) -> None:
+    # This unit test has no DB (no lifespan run), so the router-level
+    # `require_org_member` dependency — which needs a live session to check
+    # membership — is swapped for a fixed context. That isolates this test to
+    # what it actually exercises: the ClickHouse read + redaction path.
+    app.dependency_overrides[require_org_member] = lambda: OrgContext(
+        principal=DEV_PRINCIPAL, org_id=DEV_ORG_ID, role=OrgMemberRole.owner
+    )
     r = client.get(
-        f"/scans/{uuid4()}/secrets",
+        f"/orgs/{DEV_ORG_ID}/scans/{uuid4()}/secrets",
         headers={"Authorization": "Bearer test-token"},
     )
     assert r.status_code == 200
@@ -73,5 +89,9 @@ def test_list_secrets_returns_redacted_rows(client: TestClient) -> None:
 
 
 def test_list_secrets_requires_auth(client: TestClient) -> None:
-    r = client.get(f"/scans/{uuid4()}/secrets")
+    # No bearer header and no `require_org_member` override: `require_user`
+    # (the first sub-dependency of `require_org_member`) must 401 before any
+    # DB access is attempted, since this unit test has no live session
+    # factory (no lifespan run).
+    r = client.get(f"/orgs/{DEV_ORG_ID}/scans/{uuid4()}/secrets")
     assert r.status_code == 401

@@ -55,6 +55,10 @@ class Settings(BaseSettings):
 
     # --- app --------------------------------------------------------------
     ippon_dev_token: str = Field(default="changeme")
+    ippon_auth_mode: Literal["dev", "oidc"] = Field(
+        default="dev",
+        description="'dev' honors IPPON_DEV_TOKEN; 'oidc' validates IdP JWTs (Phase 4).",
+    )
     ippon_job_runner: JobRunnerBackend = Field(default="docker")
     ippon_secret_key: str = Field(
         default="changeme",

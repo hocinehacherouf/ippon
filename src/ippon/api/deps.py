@@ -57,7 +57,10 @@ async def require_user(
             detail="missing or malformed Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    principal = authenticate_dev_token(creds.credentials, settings.ippon_dev_token)
+    if settings.ippon_auth_mode == "dev":
+        principal = authenticate_dev_token(creds.credentials, settings.ippon_dev_token)
+    else:
+        principal = None  # OIDC validation lands in Phase 4
     if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

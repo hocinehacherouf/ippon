@@ -26,6 +26,7 @@ tombstone row with ``is_deleted = 1``.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -84,3 +85,12 @@ def make_sync_client(settings: Settings | None = None, **overrides: Any) -> Sync
         secure=params.secure,
         **overrides,
     )
+
+
+def ch_scoped(org_id: uuid.UUID, params: dict[str, Any]) -> str:
+    """Return the org predicate and register its bound parameter.
+
+    Usage: ``where = f"{ch_scoped(ctx.org_id, params)} AND scan_id = {{scan_id:UUID}}"``.
+    """
+    params["org"] = str(org_id)
+    return "org_id = {org:UUID}"

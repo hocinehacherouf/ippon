@@ -1,10 +1,15 @@
 """Scan API.
 
-``POST /scans`` registers the repo on first sight (single default org for the
-scaffold), creates a ``scan_jobs`` row with a freshly-minted callback secret,
-and enqueues ``ippon.worker.tasks.scan.run_scan`` on the ``scan`` Celery queue.
-``GET /scans/{id}`` reads the row back. ``GET /scans/{id}/findings`` paginates
-the matching ClickHouse ``findings`` rows.
+``POST /scans`` creates a ``scan_jobs`` row (registering the repo on first
+sight within the caller's org) with a freshly-minted callback secret, and
+enqueues ``ippon.worker.tasks.scan.run_scan`` on the ``scan`` Celery queue.
+``GET /scans/{id}`` reads the row back; ``GET /scans`` lists them, newest
+first. ``GET /scans/{id}/findings`` and ``GET /scans/{id}/secrets`` paginate
+the matching ClickHouse rows.
+
+Every route here is mounted under ``/orgs/{org}`` (see ``ippon.api.main``,
+which also attaches the router-level ``require_org_member`` gate) and every
+handler scopes its query to ``ctx.org_id``.
 """
 
 from __future__ import annotations
@@ -14,15 +19,18 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
 from ippon.api._bootstrap import (
     AmbiguousConnectionError,
     ConnectionNotFoundError,
     resolve_scan_target,
 )
-from ippon.api.deps import CHDep, CurrentUser, DbSession, SettingsDep
-from ippon.models import JobRunnerBackend, ScanJob, ScanJobStatus, ScanTrigger
+from ippon.api.authz import OrgCtx, get_scoped, require_role
+from ippon.api.deps import CHDep, DbSession, SettingsDep
+from ippon.clickhouse import ch_scoped
+from ippon.models import JobRunnerBackend, OrgMemberRole, ScanJob, ScanJobStatus, ScanTrigger
 from ippon.schemas.finding import Finding, FindingPage
 from ippon.schemas.scan import ScanRequest, ScanResponse
 from ippon.schemas.secret import SecretFinding, SecretFindingPage
@@ -43,17 +51,21 @@ _SEVERITY_RANK_SQL = (
     "",
     response_model=ScanResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(OrgMemberRole.member))],
     summary="Enqueue a scan against a public Git repository.",
 )
 async def create_scan(
     body: ScanRequest,
-    _user: CurrentUser,
+    ctx: OrgCtx,
     db: DbSession,
     settings: SettingsDep,
 ) -> ScanResponse:
     try:
         _, _, repo = await resolve_scan_target(
-            db, body.repo_url, source_connection_id=body.source_connection_id
+            db,
+            body.repo_url,
+            org_id=ctx.org_id,
+            source_connection_id=body.source_connection_id,
         )
     except ConnectionNotFoundError as exc:
         raise HTTPException(
@@ -94,16 +106,27 @@ async def create_scan(
     response_model=ScanResponse,
     summary="Get scan job",
 )
-async def get_scan(scan_id: UUID, _: CurrentUser, db: DbSession) -> ScanResponse:
-    scan = await db.get(ScanJob, scan_id)
-    if scan is None:
-        raise HTTPException(status_code=404, detail="scan not found")
+async def get_scan(scan_id: UUID, ctx: OrgCtx, db: DbSession) -> ScanResponse:
+    scan = await get_scoped(db, ScanJob, scan_id, ctx)
     return ScanResponse.model_validate(scan)
 
 
-@router.get("", status_code=status.HTTP_501_NOT_IMPLEMENTED, summary="List scan jobs")
-async def list_scans(_: CurrentUser) -> dict[str, str]:
-    return {"status": "not_implemented"}
+@router.get("", response_model=list[ScanResponse], summary="List scan jobs")
+async def list_scans(
+    ctx: OrgCtx,
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[ScanResponse]:
+    stmt = (
+        select(ScanJob)
+        .where(ScanJob.org_id == ctx.org_id)
+        .order_by(ScanJob.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = list(await db.scalars(stmt))
+    return [ScanResponse.model_validate(row) for row in rows]
 
 
 @router.get(
@@ -113,7 +136,7 @@ async def list_scans(_: CurrentUser) -> dict[str, str]:
 )
 async def list_findings(
     scan_id: UUID,
-    _: CurrentUser,
+    ctx: OrgCtx,
     ch: CHDep,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -124,8 +147,8 @@ async def list_findings(
         ),
     ] = None,
 ) -> FindingPage:
-    where = "scan_id = {scan_id:UUID}"
     params: dict[str, Any] = {"scan_id": str(scan_id), "limit": limit, "offset": offset}
+    where = f"{ch_scoped(ctx.org_id, params)} AND scan_id = {{scan_id:UUID}}"
     if severity:
         where += " AND severity = {severity:String}"
         params["severity"] = severity
@@ -175,7 +198,7 @@ async def list_findings(
 )
 async def list_secrets(
     scan_id: UUID,
-    _: CurrentUser,
+    ctx: OrgCtx,
     ch: CHDep,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -186,8 +209,8 @@ async def list_secrets(
         ),
     ] = None,
 ) -> SecretFindingPage:
-    where = "scan_id = {scan_id:UUID}"
     params: dict[str, Any] = {"scan_id": str(scan_id), "limit": limit, "offset": offset}
+    where = f"{ch_scoped(ctx.org_id, params)} AND scan_id = {{scan_id:UUID}}"
     if validation_status:
         where += " AND validation_status = {validation_status:String}"
         params["validation_status"] = validation_status

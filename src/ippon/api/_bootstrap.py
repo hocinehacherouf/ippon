@@ -13,11 +13,15 @@ Resolution order in :func:`resolve_scan_target`:
    with ``credential_type=none`` and no stored secret, so zero-config
    public-repo scans keep working.
 
-Multi-tenancy is still single-org for the scaffold (one ``default`` org).
+The org itself is resolved by the caller (route-level ``OrgCtx``) and passed
+in explicitly as ``org_id`` — this module no longer picks a default org for
+scan targets. ``get_or_create_default_org`` remains, used only to seed/find
+the dev org (``ensure_dev_identity``).
 """
 
 from __future__ import annotations
 
+import uuid
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -31,6 +35,7 @@ from ippon.models import (
     SourceCredentialType,
     SourceProvider,
 )
+from ippon.security import DEV_ORG_ID, DEV_ORG_SLUG
 
 # Provider public-cloud hosts, used when a connection has no explicit base_url.
 _CLOUD_HOST = {
@@ -53,10 +58,16 @@ class AmbiguousConnectionError(ResolutionError):
 
 
 async def get_or_create_default_org(session: AsyncSession) -> Org:
-    org = await session.scalar(select(Org).where(Org.slug == "default"))
+    """The single canonical default org, keyed on the fixed dev-identity id.
+
+    Looked up by slug (the unique, human-meaningful key) but created with the
+    fixed ``DEV_ORG_ID`` so this and :func:`ensure_dev_identity` always agree
+    on one row — no matter which of the two runs first.
+    """
+    org = await session.scalar(select(Org).where(Org.slug == DEV_ORG_SLUG))
     if org is not None:
         return org
-    org = Org(slug="default", name="Default")
+    org = Org(id=DEV_ORG_ID, slug=DEV_ORG_SLUG, name="Default")
     session.add(org)
     await session.flush()
     return org
@@ -183,14 +194,44 @@ async def resolve_scan_target(
     session: AsyncSession,
     clone_url: str,
     *,
+    org_id: uuid.UUID,
     source_connection_id: UUID | None = None,
 ) -> tuple[Org, SourceConnection, Repository]:
-    """org + source + repo for a clone URL. Used by ``POST /scans``.
+    """org + source + repo for a clone URL, scoped to ``org_id``.
 
-    Raises :class:`ConnectionNotFoundError` or :class:`AmbiguousConnectionError` —
-    the route translates these to 404 / 409 respectively.
+    Used by ``POST /orgs/{org}/scans``. Raises :class:`ConnectionNotFoundError`
+    if ``org_id`` doesn't resolve to a real org, or if an explicit
+    ``source_connection_id`` doesn't belong to it; raises
+    :class:`AmbiguousConnectionError` if several connections match the clone
+    host. The route translates these to 404 / 409 respectively.
     """
-    org = await get_or_create_default_org(session)
+    org = await session.get(Org, org_id)
+    if org is None:
+        raise ConnectionNotFoundError(str(org_id))
     source = await _resolve_source(session, org, clone_url, source_connection_id)
     repo = await get_or_create_repository(session, org=org, source=source, clone_url=clone_url)
     return org, source, repo
+
+
+async def ensure_dev_identity(session: AsyncSession) -> Org:
+    """Idempotently seed the dev user, dev org, and an owner membership.
+
+    Delegates org creation to :func:`get_or_create_default_org` so there is
+    exactly one code path that can create "the default org" — avoiding a
+    ``slug`` unique-constraint collision if the two ever raced or ran in
+    either order against the same database.
+    """
+    from ippon.models import OrgMember, OrgMemberRole, User
+    from ippon.security import DEV_USER_ID
+
+    if await session.get(User, DEV_USER_ID) is None:
+        session.add(User(id=DEV_USER_ID, email="dev@ippon.local", display_name="Dev"))
+    org = await get_or_create_default_org(session)
+    await session.flush()
+    member = await session.scalar(
+        select(OrgMember).where(OrgMember.org_id == org.id, OrgMember.user_id == DEV_USER_ID)
+    )
+    if member is None:
+        session.add(OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.owner))
+        await session.flush()
+    return org
