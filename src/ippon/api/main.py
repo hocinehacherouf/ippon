@@ -31,6 +31,7 @@ from ippon.api.routes import admin as admin_routes
 from ippon.api.routes import auth as auth_routes
 from ippon.api.routes import health as health_routes
 from ippon.api.routes import internal as internal_routes
+from ippon.api.routes import me as me_routes
 from ippon.api.routes import orgs as orgs_routes
 from ippon.api.routes import repos as repos_routes
 from ippon.api.routes import scans as scans_routes
@@ -45,6 +46,7 @@ from ippon.db import make_async_engine, make_async_session_factory
 OPENAPI_TAGS = [
     {"name": "health", "description": "Liveness and readiness probes."},
     {"name": "auth", "description": "Bearer-token auth (dev) / OIDC (planned)."},
+    {"name": "me", "description": "Current principal and their org memberships."},
     {"name": "orgs", "description": "Organizations and membership."},
     {"name": "sources", "description": "Source-provider connections (GitHub/GitLab/AzDO)."},
     {"name": "repos", "description": "Registered repositories."},
@@ -147,6 +149,7 @@ def _install_error_handlers(app: FastAPI) -> None:
 def _install_routes(app: FastAPI) -> None:
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
+    app.include_router(me_routes.router)
     app.include_router(orgs_routes.router)
     app.include_router(
         sources_routes.router,

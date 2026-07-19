@@ -57,3 +57,15 @@ async def test_service_counts_and_memberships(client: TestClient, session: Async
     assert owners >= 1
     mems = await list_memberships(session, DEV_USER_ID)
     assert any(org.id == DEV_ORG_ID and role == OrgMemberRole.owner for org, role in mems)
+
+
+async def test_me_lists_memberships(client: TestClient) -> None:
+    r = client.get("/me", headers=_AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["user_id"] == str(DEV_USER_ID)
+    assert any(m["org_id"] == str(DEV_ORG_ID) and m["role"] == "owner" for m in body["memberships"])
+
+
+def test_me_requires_auth(client: TestClient) -> None:
+    assert client.get("/me").status_code == 401
