@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ippon.api.main import create_app
 from ippon.config import Settings, get_settings
 from ippon.db import async_session_scope, make_async_engine, make_async_session_factory
-from ippon.models import Org, OrgMember, OrgMemberRole
+from ippon.models import Org, OrgMember, OrgMemberRole, User
 from ippon.security import DEV_USER_ID
 
 pytestmark = pytest.mark.integration
@@ -107,3 +107,80 @@ async def test_members_of_other_org_forbidden(client: TestClient, session: Async
     await session.commit()
     r = client.get(f"/orgs/{org.id}/members", headers=_AUTH)
     assert r.status_code == 404
+
+
+def test_change_role_and_remove(client: TestClient) -> None:
+    oid = client.post("/orgs", headers=_AUTH, json={"name": "R", "slug": _uniq("r")}).json()["id"]
+    email = f"{_uniq('m')}@example.com"
+    uid = client.post(
+        f"/orgs/{oid}/members", headers=_AUTH, json={"email": email, "role": "member"}
+    ).json()["user_id"]
+    assert (
+        client.patch(f"/orgs/{oid}/members/{uid}", headers=_AUTH, json={"role": "admin"}).json()[
+            "role"
+        ]
+        == "admin"
+    )
+    assert client.delete(f"/orgs/{oid}/members/{uid}", headers=_AUTH).status_code == 204
+
+
+def test_cannot_remove_last_owner(client: TestClient) -> None:
+    oid = client.post("/orgs", headers=_AUTH, json={"name": "O", "slug": _uniq("o")}).json()["id"]
+    # the creator (dev user) is the sole owner
+    r = client.delete(f"/orgs/{oid}/members/{DEV_USER_ID}", headers=_AUTH)
+    assert r.status_code == 409
+    # and can't be demoted
+    assert (
+        client.patch(
+            f"/orgs/{oid}/members/{DEV_USER_ID}", headers=_AUTH, json={"role": "admin"}
+        ).status_code
+        == 409
+    )
+
+
+@pytest.mark.integration
+async def test_admin_cannot_modify_or_grant_owner(
+    client: TestClient, session: AsyncSession
+) -> None:
+    """An admin (not owner) is blocked from demoting/removing an owner or granting owner.
+
+    Both existing Task 7 tests (``test_change_role_and_remove`` and
+    ``test_cannot_remove_last_owner``) call as the org owner, so the
+    ``ctx.role != owner`` branch of the escalation guard on ``update_member``
+    / ``remove_member`` is never exercised. Seed the dev user as an ``admin``
+    alongside a real ``owner`` and a plain ``member`` so the caller clears
+    the outer ``require_role(admin)`` gate but still hits the owner-touch
+    guard. A 404 here would mean the seeded membership is wrong; a 200/204
+    would be a real privilege-escalation bug.
+    """
+    org = Org(slug=_uniq("esc"), name="Esc")
+    session.add(org)
+    await session.flush()
+    owner_user = User(email=f"{_uniq('own')}@e.com")
+    member_user = User(email=f"{_uniq('mem')}@e.com")
+    session.add_all([owner_user, member_user])
+    await session.flush()
+    session.add_all(
+        [
+            OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.admin),
+            OrgMember(org_id=org.id, user_id=owner_user.id, role=OrgMemberRole.owner),
+            OrgMember(org_id=org.id, user_id=member_user.id, role=OrgMemberRole.member),
+        ]
+    )
+    await session.commit()
+
+    # demoting an owner
+    r = client.patch(
+        f"/orgs/{org.id}/members/{owner_user.id}", headers=_AUTH, json={"role": "admin"}
+    )
+    assert r.status_code == 403, r.text
+
+    # removing an owner
+    r = client.delete(f"/orgs/{org.id}/members/{owner_user.id}", headers=_AUTH)
+    assert r.status_code == 403, r.text
+
+    # granting owner to a plain member
+    r = client.patch(
+        f"/orgs/{org.id}/members/{member_user.id}", headers=_AUTH, json={"role": "owner"}
+    )
+    assert r.status_code == 403, r.text
