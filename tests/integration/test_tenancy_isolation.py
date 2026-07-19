@@ -29,6 +29,8 @@ from ippon.db import async_session_scope, make_async_engine, make_async_session_
 from ippon.models import (
     JobRunnerBackend,
     Org,
+    OrgMember,
+    OrgMemberRole,
     Repository,
     ScanJob,
     ScanJobStatus,
@@ -37,7 +39,7 @@ from ippon.models import (
     SourceCredentialType,
     SourceProvider,
 )
-from ippon.security import DEV_ORG_ID
+from ippon.security import DEV_ORG_ID, DEV_USER_ID
 
 pytestmark = pytest.mark.integration
 
@@ -318,3 +320,24 @@ def test_findings_exclude_other_orgs(client: TestClient) -> None:
     assert body["total"] == 1
     assert len(body["items"]) == 1
     assert body["items"][0]["cve_id"] == "CVE-DEV-0001"
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_create_source(client: TestClient, session: AsyncSession) -> None:
+    """A caller who IS a member of the org (so ``require_org_member`` passes,
+    not a 404) but only a ``viewer`` (below the ``member`` minimum) is
+    forbidden from mutating — proves ``require_role`` is enforced, not just
+    ``require_org_member``.
+    """
+    org = Org(slug=_unique("v"), name="V")
+    session.add(org)
+    await session.flush()
+    session.add(OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.viewer))
+    await session.commit()
+
+    r = client.post(
+        f"/orgs/{org.id}/sources",
+        headers=_AUTH,
+        json={"name": _unique("x"), "provider": "github", "credential_type": "none"},
+    )
+    assert r.status_code == 403

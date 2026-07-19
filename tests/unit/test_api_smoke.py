@@ -42,6 +42,11 @@ def test_openapi_doc_renders(client: TestClient) -> None:
     assert {"health", "auth", "orgs", "sources", "repos", "scans", "webhooks"} <= tag_names
 
 
+def test_nested_repos_route_registered(client: TestClient) -> None:
+    paths = client.get("/openapi.json").json()["paths"]
+    assert "/orgs/{org}/repos" in paths
+
+
 def test_docs_page_renders(client: TestClient) -> None:
     r = client.get("/docs")
     assert r.status_code == 200
