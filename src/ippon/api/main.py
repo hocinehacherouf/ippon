@@ -32,6 +32,7 @@ from ippon.api.routes import auth as auth_routes
 from ippon.api.routes import health as health_routes
 from ippon.api.routes import internal as internal_routes
 from ippon.api.routes import me as me_routes
+from ippon.api.routes import members as members_routes
 from ippon.api.routes import orgs as orgs_routes
 from ippon.api.routes import repos as repos_routes
 from ippon.api.routes import scans as scans_routes
@@ -48,6 +49,7 @@ OPENAPI_TAGS = [
     {"name": "auth", "description": "Bearer-token auth (dev) / OIDC (planned)."},
     {"name": "me", "description": "Current principal and their org memberships."},
     {"name": "orgs", "description": "Organizations and membership."},
+    {"name": "members", "description": "Organization members (list, add)."},
     {"name": "sources", "description": "Source-provider connections (GitHub/GitLab/AzDO)."},
     {"name": "repos", "description": "Registered repositories."},
     {"name": "scans", "description": "Scan jobs and findings."},
@@ -153,6 +155,10 @@ def _install_routes(app: FastAPI) -> None:
     app.include_router(orgs_routes.router)
     app.include_router(
         orgs_routes.detail_router,
+        dependencies=[Depends(require_org_member)],
+    )
+    app.include_router(
+        members_routes.router,
         dependencies=[Depends(require_org_member)],
     )
     app.include_router(
