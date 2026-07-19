@@ -71,6 +71,12 @@ def _make_lifespan(settings: Settings) -> Any:
         app.state.session_factory = make_async_session_factory(engine)
         app.state.redis = redis.Redis.from_url(settings.valkey_url, decode_responses=True)
         app.state.ch_client = make_sync_client(settings)
+        if settings.ippon_auth_mode == "dev":
+            from ippon.api._bootstrap import ensure_dev_identity
+            from ippon.db import async_session_scope
+
+            async with async_session_scope(app.state.session_factory) as session:
+                await ensure_dev_identity(session)
         try:
             yield
         finally:
