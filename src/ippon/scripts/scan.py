@@ -1,6 +1,7 @@
 """CLI: ``python -m ippon.scripts.scan <REPO> [REF]``.
 
-Thin client over the API: POST /scans → poll /scans/{id} until terminal.
+Thin client over the API: POST /orgs/{org}/scans → poll /orgs/{org}/scans/{id}
+until terminal.
 Exits non-zero if the scan ends in ``failed``. Used by ``just scan REPO=…``.
 """
 

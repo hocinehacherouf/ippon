@@ -92,3 +92,4 @@ def test_dev_token_rejected_in_oidc_mode() -> None:
     c = TestClient(app)
     r = c.get("/orgs", headers={"Authorization": "Bearer test-token"})
     assert r.status_code == 401
+    assert r.headers["www-authenticate"] == "Bearer"
