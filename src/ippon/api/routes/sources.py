@@ -14,13 +14,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
-from ippon.api._bootstrap import get_or_create_default_org
-from ippon.api.deps import CurrentUser, DbSession, SettingsDep
+from ippon.api.authz import OrgCtx, get_scoped, require_role
+from ippon.api.deps import DbSession, SettingsDep
 from ippon.config import Settings
-from ippon.models import Repository, SourceConnection, SourceCredentialType
+from ippon.models import OrgMemberRole, Repository, SourceConnection, SourceCredentialType
 from ippon.schemas.source import (
     SourceConnectionCreate,
     SourceConnectionCreated,
@@ -66,21 +66,20 @@ def _to_response(conn: SourceConnection, settings: Settings) -> SourceConnection
     "",
     response_model=SourceConnectionCreated,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role(OrgMemberRole.member))],
     summary="Register a source connection.",
 )
 async def create_source(
     body: SourceConnectionCreate,
-    _user: CurrentUser,
+    ctx: OrgCtx,
     db: DbSession,
     settings: SettingsDep,
 ) -> SourceConnectionCreated:
-    org = await get_or_create_default_org(db)
-
     # Reject a duplicate name early with a clean 409 (the DB unique constraint
     # is the backstop).
     dup = await db.scalar(
         select(SourceConnection).where(
-            SourceConnection.org_id == org.id,
+            SourceConnection.org_id == ctx.org_id,
             SourceConnection.name == body.name,
         )
     )
@@ -101,7 +100,7 @@ async def create_source(
     kid = kid or secret_kid
 
     conn = SourceConnection(
-        org_id=org.id,
+        org_id=ctx.org_id,
         name=body.name,
         provider=body.provider,
         credential_type=body.credential_type,
@@ -121,14 +120,11 @@ async def create_source(
 
 
 @router.get("", response_model=SourceConnectionList, summary="List source connections.")
-async def list_sources(
-    _user: CurrentUser, db: DbSession, settings: SettingsDep
-) -> SourceConnectionList:
-    org = await get_or_create_default_org(db)
+async def list_sources(ctx: OrgCtx, db: DbSession, settings: SettingsDep) -> SourceConnectionList:
     conns = list(
         await db.scalars(
             select(SourceConnection)
-            .where(SourceConnection.org_id == org.id)
+            .where(SourceConnection.org_id == ctx.org_id)
             .order_by(SourceConnection.name)
         )
     )
@@ -142,21 +138,20 @@ async def list_sources(
     "/{source_id}", response_model=SourceConnectionResponse, summary="Get a source connection."
 )
 async def get_source(
-    source_id: UUID, _user: CurrentUser, db: DbSession, settings: SettingsDep
+    source_id: UUID, ctx: OrgCtx, db: DbSession, settings: SettingsDep
 ) -> SourceConnectionResponse:
-    conn = await db.get(SourceConnection, source_id)
-    if conn is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="source not found")
+    conn = await get_scoped(db, SourceConnection, source_id, ctx)
     return _to_response(conn, settings)
 
 
 @router.delete(
-    "/{source_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a source connection."
+    "/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role(OrgMemberRole.admin))],
+    summary="Delete a source connection.",
 )
-async def delete_source(source_id: UUID, _user: CurrentUser, db: DbSession) -> None:
-    conn = await db.get(SourceConnection, source_id)
-    if conn is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="source not found")
+async def delete_source(source_id: UUID, ctx: OrgCtx, db: DbSession) -> None:
+    conn = await get_scoped(db, SourceConnection, source_id, ctx)
     repo_count = await db.scalar(
         select(func.count())
         .select_from(Repository)
@@ -173,14 +168,13 @@ async def delete_source(source_id: UUID, _user: CurrentUser, db: DbSession) -> N
 @router.post(
     "/{source_id}/rotate-webhook-secret",
     response_model=SourceConnectionCreated,
+    dependencies=[Depends(require_role(OrgMemberRole.admin))],
     summary="Mint a fresh webhook secret (invalidates the previous one).",
 )
 async def rotate_webhook_secret(
-    source_id: UUID, _user: CurrentUser, db: DbSession, settings: SettingsDep
+    source_id: UUID, ctx: OrgCtx, db: DbSession, settings: SettingsDep
 ) -> SourceConnectionCreated:
-    conn = await db.get(SourceConnection, source_id)
-    if conn is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="source not found")
+    conn = await get_scoped(db, SourceConnection, source_id, ctx)
     webhook_secret = generate_webhook_secret()
     conn.webhook_secret_blob, conn.credential_kid = encrypt_secret(
         webhook_secret, settings.ippon_secret_key

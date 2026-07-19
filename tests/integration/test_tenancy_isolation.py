@@ -148,3 +148,29 @@ async def test_repos_list_is_org_filtered(client: TestClient, session: AsyncSess
     full_names = {item["full_name"] for item in r.json()["items"]}
     assert dev_repo.full_name in full_names
     assert foreign_repo.full_name not in full_names
+
+
+@pytest.mark.asyncio
+async def test_source_by_id_from_other_org_is_404(
+    client: TestClient, session: AsyncSession
+) -> None:
+    """A source-connection id belonging to a different org 404s for a caller
+    who IS a member of the org named in the path — same IDOR guard as
+    ``test_repo_by_id_from_other_org_is_404``, now for sources.
+    """
+    other_id = await _seed_foreign_org(session)
+    conn = SourceConnection(
+        org_id=other_id,
+        name=_unique("c"),
+        provider=SourceProvider.github,
+        credential_type=SourceCredentialType.none,
+        base_url=None,
+        credential_blob=None,
+        webhook_secret_blob=None,
+        credential_kid=None,
+    )
+    session.add(conn)
+    await session.commit()
+
+    r = client.get(f"/orgs/{DEV_ORG_ID}/sources/{conn.id}", headers=_AUTH)
+    assert r.status_code == 404

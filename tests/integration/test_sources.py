@@ -37,7 +37,7 @@ from ippon.models import (
     SourceCredentialType,
     SourceProvider,
 )
-from ippon.security import compute_hmac_sha256
+from ippon.security import DEV_ORG_ID, compute_hmac_sha256
 
 pytestmark = pytest.mark.integration
 
@@ -74,7 +74,7 @@ def _unique(prefix: str) -> str:
 def test_create_source_returns_secret_once_and_stores_ciphertext(client: TestClient) -> None:
     name = _unique("gh")
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={
             "name": name,
@@ -92,20 +92,22 @@ def test_create_source_returns_secret_once_and_stores_ciphertext(client: TestCli
     secret = body["webhook_secret"]
 
     # GET never echoes the secret or the credential.
-    got = client.get(f"/sources/{body['id']}", headers=_AUTH)
+    got = client.get(f"/orgs/{DEV_ORG_ID}/sources/{body['id']}", headers=_AUTH)
     assert got.status_code == 200
     assert "webhook_secret" not in got.json()
     assert "credential" not in got.json()
 
     # Re-fetch via rotate to confirm the secret changes.
-    rot = client.post(f"/sources/{body['id']}/rotate-webhook-secret", headers=_AUTH)
+    rot = client.post(
+        f"/orgs/{DEV_ORG_ID}/sources/{body['id']}/rotate-webhook-secret", headers=_AUTH
+    )
     assert rot.status_code == 200
     assert rot.json()["webhook_secret"] != secret
 
 
 def test_create_rejects_credential_for_none_type(client: TestClient) -> None:
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={
             "name": _unique("anon"),
@@ -120,18 +122,19 @@ def test_create_rejects_credential_for_none_type(client: TestClient) -> None:
 def test_create_rejects_duplicate_name(client: TestClient) -> None:
     name = _unique("dup")
     payload = {"name": name, "provider": "gitlab", "credential_type": "pat", "credential": "x"}
-    assert client.post("/sources", headers=_AUTH, json=payload).status_code == 201
-    again = client.post("/sources", headers=_AUTH, json=payload)
+    url = f"/orgs/{DEV_ORG_ID}/sources"
+    assert client.post(url, headers=_AUTH, json=payload).status_code == 201
+    again = client.post(url, headers=_AUTH, json=payload)
     assert again.status_code == 409
 
 
 def test_list_sources_hides_secrets(client: TestClient) -> None:
     client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={"name": _unique("ls"), "provider": "github", "credential_type": "none"},
     )
-    r = client.get("/sources", headers=_AUTH)
+    r = client.get(f"/orgs/{DEV_ORG_ID}/sources", headers=_AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["total"] >= 1
@@ -143,7 +146,7 @@ def test_list_sources_hides_secrets(client: TestClient) -> None:
 @pytest.mark.asyncio
 async def test_credential_blob_is_ciphertext(client: TestClient, session: AsyncSession) -> None:
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={
             "name": _unique("cipher"),
@@ -161,13 +164,13 @@ async def test_credential_blob_is_ciphertext(client: TestClient, session: AsyncS
 
 def test_delete_source_without_repos_succeeds(client: TestClient) -> None:
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={"name": _unique("del"), "provider": "github", "credential_type": "none"},
     )
     sid = r.json()["id"]
-    assert client.delete(f"/sources/{sid}", headers=_AUTH).status_code == 204
-    assert client.get(f"/sources/{sid}", headers=_AUTH).status_code == 404
+    assert client.delete(f"/orgs/{DEV_ORG_ID}/sources/{sid}", headers=_AUTH).status_code == 204
+    assert client.get(f"/orgs/{DEV_ORG_ID}/sources/{sid}", headers=_AUTH).status_code == 404
 
 
 @pytest.mark.asyncio
@@ -175,7 +178,7 @@ async def test_delete_source_with_repos_conflicts(
     client: TestClient, session: AsyncSession
 ) -> None:
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={"name": _unique("withrepo"), "provider": "github", "credential_type": "none"},
     )
@@ -193,7 +196,7 @@ async def test_delete_source_with_repos_conflicts(
     )
     await session.commit()
 
-    assert client.delete(f"/sources/{sid}", headers=_AUTH).status_code == 409
+    assert client.delete(f"/orgs/{DEV_ORG_ID}/sources/{sid}", headers=_AUTH).status_code == 409
 
 
 # --- per-connection webhook routing ---------------------------------------
@@ -201,7 +204,7 @@ async def test_delete_source_with_repos_conflicts(
 
 def _create_github_connection(client: TestClient) -> tuple[str, str]:
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={"name": _unique("wh"), "provider": "github", "credential_type": "none"},
     )
@@ -262,7 +265,7 @@ def test_github_webhook_unknown_connection_404(client: TestClient) -> None:
 def test_webhook_provider_mismatch_400(client: TestClient) -> None:
     # A gitlab connection hit on the github route → 400.
     r = client.post(
-        "/sources",
+        f"/orgs/{DEV_ORG_ID}/sources",
         headers=_AUTH,
         json={"name": _unique("gl"), "provider": "gitlab", "credential_type": "none"},
     )

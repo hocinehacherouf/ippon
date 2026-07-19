@@ -148,7 +148,11 @@ def _install_routes(app: FastAPI) -> None:
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
     app.include_router(orgs_routes.router)
-    app.include_router(sources_routes.router)
+    app.include_router(
+        sources_routes.router,
+        prefix="/orgs/{org}",
+        dependencies=[Depends(require_org_member)],
+    )
     app.include_router(
         repos_routes.router,
         prefix="/orgs/{org}",
