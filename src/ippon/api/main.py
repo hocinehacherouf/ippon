@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import redis.asyncio as redis
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ippon import __version__
+from ippon.api.authz import require_org_member
 from ippon.api.routes import admin as admin_routes
 from ippon.api.routes import auth as auth_routes
 from ippon.api.routes import health as health_routes
@@ -148,7 +149,11 @@ def _install_routes(app: FastAPI) -> None:
     app.include_router(auth_routes.router)
     app.include_router(orgs_routes.router)
     app.include_router(sources_routes.router)
-    app.include_router(repos_routes.router)
+    app.include_router(
+        repos_routes.router,
+        prefix="/orgs/{org}",
+        dependencies=[Depends(require_org_member)],
+    )
     app.include_router(scans_routes.router)
     app.include_router(admin_routes.router)
     app.include_router(internal_routes.router)

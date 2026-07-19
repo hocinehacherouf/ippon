@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import aliased
 
-from ippon.api.deps import CurrentUser, DbSession
+from ippon.api.authz import OrgCtx, get_scoped
+from ippon.api.deps import DbSession
 from ippon.models import Repository, ScanJob
 from ippon.schemas.repo import RepositoryList, RepositoryListItem
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/repos", tags=["repos"])
     response_model=RepositoryList,
     summary="List repositories with their most recent scan's status.",
 )
-async def list_repos(_: CurrentUser, db: DbSession) -> RepositoryList:
+async def list_repos(ctx: OrgCtx, db: DbSession) -> RepositoryList:
     # Subquery: latest scan_jobs.created_at per repository.
     latest = (
         select(
@@ -34,6 +35,7 @@ async def list_repos(_: CurrentUser, db: DbSession) -> RepositoryList:
     sj = aliased(ScanJob)
     stmt = (
         select(Repository, sj)
+        .where(Repository.org_id == ctx.org_id)
         .outerjoin(latest, latest.c.repo_id == Repository.id)
         .outerjoin(
             sj,
@@ -71,10 +73,8 @@ async def list_repos(_: CurrentUser, db: DbSession) -> RepositoryList:
     response_model=RepositoryListItem,
     summary="Get one repository (with its most recent scan summary).",
 )
-async def get_repo(repo_id: UUID, _: CurrentUser, db: DbSession) -> RepositoryListItem:
-    repo = await db.get(Repository, repo_id)
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="repo not found")
+async def get_repo(repo_id: UUID, ctx: OrgCtx, db: DbSession) -> RepositoryListItem:
+    repo = await get_scoped(db, Repository, repo_id, ctx)
     latest = await db.scalar(
         select(ScanJob)
         .where(ScanJob.repository_id == repo_id)
@@ -102,5 +102,5 @@ async def get_repo(repo_id: UUID, _: CurrentUser, db: DbSession) -> RepositoryLi
     status_code=status.HTTP_501_NOT_IMPLEMENTED,
     summary="Refresh repo metadata from provider",
 )
-async def refresh_repo(repo_id: UUID, _: CurrentUser) -> dict[str, str]:
+async def refresh_repo(repo_id: UUID, ctx: OrgCtx) -> dict[str, str]:
     return {"status": "not_implemented", "repo_id": str(repo_id)}
