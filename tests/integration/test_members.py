@@ -224,3 +224,92 @@ def test_bootstrap_creates_org_and_owner(client: TestClient) -> None:
     assert (
         main(["--org-slug", slug, "--org-name", "Boot", "--owner-email", "boss@example.com"]) == 0
     )
+
+
+@pytest.mark.integration
+async def test_owner_can_demote_and_remove_second_owner(
+    client: TestClient, session: AsyncSession
+) -> None:
+    """A legitimate owner CAN demote and then remove a second owner.
+
+    Mirrors ``test_cannot_remove_last_owner``'s deny-path: with two owners
+    present, ``count_owners`` is 2 at the time of the PATCH, so the
+    last-owner guard must not fire and the demotion must succeed. Once
+    demoted, the (now plain member) row can also be deleted outright.
+    """
+    org = Org(slug=_uniq("2own"), name="TwoOwners")
+    session.add(org)
+    await session.flush()
+    second_owner = User(email=f"{_uniq('owner2')}@e.com")
+    session.add(second_owner)
+    await session.flush()
+    session.add_all(
+        [
+            OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.owner),
+            OrgMember(org_id=org.id, user_id=second_owner.id, role=OrgMemberRole.owner),
+        ]
+    )
+    await session.commit()
+
+    r = client.patch(
+        f"/orgs/{org.id}/members/{second_owner.id}", headers=_AUTH, json={"role": "member"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "member"
+
+    r = client.delete(f"/orgs/{org.id}/members/{second_owner.id}", headers=_AUTH)
+    assert r.status_code == 204, r.text
+
+
+@pytest.mark.integration
+async def test_owner_can_grant_owner(client: TestClient, session: AsyncSession) -> None:
+    """A legitimate owner CAN grant the ``owner`` role to a plain member.
+
+    The mirror of ``test_admin_cannot_modify_or_grant_owner``'s "granting
+    owner to a plain member" deny-path: here the caller is a real owner, so
+    the escalation guard on ``update_member`` must let the PATCH through.
+    """
+    org = Org(slug=_uniq("grant"), name="Grant")
+    session.add(org)
+    await session.flush()
+    member_user = User(email=f"{_uniq('promote')}@e.com")
+    session.add(member_user)
+    await session.flush()
+    session.add_all(
+        [
+            OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.owner),
+            OrgMember(org_id=org.id, user_id=member_user.id, role=OrgMemberRole.member),
+        ]
+    )
+    await session.commit()
+
+    r = client.patch(
+        f"/orgs/{org.id}/members/{member_user.id}", headers=_AUTH, json={"role": "owner"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "owner"
+
+
+@pytest.mark.integration
+async def test_admin_can_add_member(client: TestClient, session: AsyncSession) -> None:
+    """A plain ``admin`` (not the org's owner/creator) CAN add a non-owner member.
+
+    The mirror of ``test_member_cannot_add_member``'s deny-path: ``admin`` is
+    exactly the ``require_role`` minimum for ``POST``, so this confirms any
+    admin — not just an owner — can add members, as long as the granted role
+    isn't ``owner``.
+    """
+    org = Org(slug=_uniq("adminadd"), name="AdminAdd")
+    session.add(org)
+    await session.flush()
+    session.add(OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.admin))
+    await session.commit()
+
+    email = f"{_uniq('newmem')}@e.com"
+    r = client.post(
+        f"/orgs/{org.id}/members",
+        headers=_AUTH,
+        json={"email": email, "role": "member"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["email"] == email

@@ -54,11 +54,12 @@ async def list_members(ctx: OrgCtx, db: DbSession) -> MemberList:
     summary="Add a member by email",
 )
 async def add_member(body: MemberAdd, ctx: OrgCtx, db: DbSession) -> MemberResponse:
+    email = body.email.strip().lower()
     if body.role == OrgMemberRole.owner and ctx.role != OrgMemberRole.owner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="only an owner can grant owner")
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(select(User).where(User.email == email))
     if user is None:
-        user = User(email=body.email)
+        user = User(email=email)
         db.add(user)
         await db.flush()
     existing = await db.scalar(

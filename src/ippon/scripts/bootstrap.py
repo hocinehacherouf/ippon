@@ -31,13 +31,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+    email = args.owner_email.strip().lower()
     engine = make_sync_engine(get_settings())
     factory = make_sync_session_factory(engine)
     try:
         with sync_session_scope(factory) as session:
-            user = session.scalar(select(User).where(User.email == args.owner_email))
+            user = session.scalar(select(User).where(User.email == email))
             if user is None:
-                user = User(email=args.owner_email)
+                user = User(email=email)
                 session.add(user)
                 session.flush()
 
@@ -53,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
             if member is None:
                 session.add(OrgMember(org_id=org.id, user_id=user.id, role=OrgMemberRole.owner))
 
-            print(f"org {org.slug} ({org.id}) owner={args.owner_email}")
+            print(f"org {org.slug} ({org.id}) owner={email}")
     finally:
         engine.dispose()
     return 0
