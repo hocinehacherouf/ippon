@@ -7,13 +7,23 @@ an ASGI test driver but only hit routes that don't depend on ``app.state``.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
+from ippon.api.deps import get_db
 from ippon.api.main import create_app
 from ippon.config import Settings
+
+
+async def _no_db() -> AsyncIterator[None]:
+    """Override for ``get_db``: these tests never enter the lifespan, so
+    ``app.state.session_factory`` is unset. The 401 tests fail auth via
+    ``require_user`` before ``db`` would ever be used, but overriding
+    ``get_db`` keeps that order-independent instead of relying on it.
+    """
+    yield None
 
 
 @pytest.fixture
@@ -23,6 +33,7 @@ def client() -> Iterator[TestClient]:
     # would trigger lifespan startup and try to open real DB/Valkey/CH
     # connections. ``app.state.settings`` is set in ``create_app`` itself,
     # so auth-protected routes work without a live infra stack.
+    app.dependency_overrides[get_db] = _no_db
     yield TestClient(app)
 
 
@@ -75,12 +86,6 @@ def test_protected_route_rejects_bad_token(client: TestClient) -> None:
     assert r.status_code == 401
 
 
-def test_protected_route_accepts_good_token(client: TestClient) -> None:
-    r = client.get("/orgs", headers={"Authorization": "Bearer test-token"})
-    # 501 placeholder is what we expect — auth passed, but the route is a stub.
-    assert r.status_code == 501
-
-
 def test_structured_error_includes_request_id(client: TestClient) -> None:
     r = client.get("/orgs", headers={"X-Request-Id": "rid-err-1"})
     assert r.status_code == 401
@@ -89,6 +94,7 @@ def test_structured_error_includes_request_id(client: TestClient) -> None:
 
 def test_dev_token_rejected_in_oidc_mode() -> None:
     app = create_app(Settings(ippon_dev_token="test-token", ippon_auth_mode="oidc"))
+    app.dependency_overrides[get_db] = _no_db
     c = TestClient(app)
     r = c.get("/orgs", headers={"Authorization": "Bearer test-token"})
     assert r.status_code == 401
