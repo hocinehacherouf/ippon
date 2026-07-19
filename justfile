@@ -115,8 +115,9 @@ DEFAULT_SCAN_REF  := "HEAD"
 #     just scan
 #     just scan https://github.com/anchore/grype
 #     just scan https://github.com/foo/bar main
-scan repo=DEFAULT_SCAN_REPO ref=DEFAULT_SCAN_REF:
-    uv run python -m ippon.scripts.scan {{repo}} {{ref}}
+#     just scan https://github.com/foo/bar main default
+scan repo=DEFAULT_SCAN_REPO ref=DEFAULT_SCAN_REF org="default":
+    uv run python -m ippon.scripts.scan {{repo}} {{ref}} --org {{org}}
 
 # Build the shared backend image used by api / workers / beat / the
 # per-scan reporter container. Run after editing src/ippon/* or the

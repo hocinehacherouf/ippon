@@ -35,6 +35,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=int, default=180, help="Total wall-clock budget, seconds")
     parser.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between polls")
+    parser.add_argument(
+        "--org",
+        default=os.environ.get("IPPON_ORG", "default"),
+        help="Org slug or id (env: IPPON_ORG)",
+    )
     return parser.parse_args(argv)
 
 
@@ -42,8 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     headers = {"Authorization": f"Bearer {args.token}"}
     with httpx.Client(base_url=args.base_url, headers=headers, timeout=30.0) as client:
-        print(f"POST {args.base_url}/scans repo={args.repo} ref={args.ref}")
-        r = client.post("/scans", json={"repo_url": args.repo, "ref": args.ref})
+        print(f"POST {args.base_url}/orgs/{args.org}/scans repo={args.repo} ref={args.ref}")
+        r = client.post(f"/orgs/{args.org}/scans", json={"repo_url": args.repo, "ref": args.ref})
         if r.status_code >= 400:
             print(f"create scan failed: HTTP {r.status_code} {r.text}", file=sys.stderr)
             return 1
@@ -55,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         last_status = scan["status"]
         while time.monotonic() < deadline:
             time.sleep(args.poll_interval)
-            r = client.get(f"/scans/{scan_id}")
+            r = client.get(f"/orgs/{args.org}/scans/{scan_id}")
             if r.status_code >= 400:
                 print(f"poll failed: HTTP {r.status_code} {r.text}", file=sys.stderr)
                 return 2
