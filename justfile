@@ -105,6 +105,12 @@ migrate-down:
 migrate-current:
     uv run alembic current
 
+# --- identity: org bootstrap ----------------------------------------------
+
+# Create an org + owner membership (idempotent).
+bootstrap slug name email:
+    uv run python -m ippon.scripts.bootstrap --org-slug {{slug}} --org-name {{name}} --owner-email {{email}}
+
 # --- M6: scan demo ------------------------------------------------------
 
 DEFAULT_SCAN_REPO := "https://github.com/anchore/syft"

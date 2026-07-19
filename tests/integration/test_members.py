@@ -6,7 +6,8 @@ ClickHouse + Valkey clients, which the integration env provides). Marked
 
 Fixtures (``client`` / ``session`` / ``_uniq`` / ``_AUTH`` / ``_TOKEN``) are
 copied from ``test_orgs.py``. Task 7 extends this file with update/remove
-member routes (owner/last-owner guards).
+member routes (owner/last-owner guards). Task 8 adds an end-to-end
+``require_role`` gate check plus coverage for the ``bootstrap`` CLI.
 """
 
 from __future__ import annotations
@@ -184,3 +185,42 @@ async def test_admin_cannot_modify_or_grant_owner(
         f"/orgs/{org.id}/members/{member_user.id}", headers=_AUTH, json={"role": "owner"}
     )
     assert r.status_code == 403, r.text
+
+
+async def test_member_cannot_add_member(client: TestClient, session: AsyncSession) -> None:
+    """A plain ``member`` (below the ``admin`` minimum) is blocked from adding
+    another member.
+
+    Unlike ``test_members_of_other_org_forbidden``, the caller here IS a
+    member of the org (so ``require_org_member`` passes, not a 404) — the 403
+    can only come from ``add_member``'s ``require_role(OrgMemberRole.admin)``
+    dependency rejecting a role that ranks below ``admin``.
+    """
+    org = Org(slug=_uniq("mem"), name="Mem")
+    session.add(org)
+    await session.flush()
+    session.add(OrgMember(org_id=org.id, user_id=DEV_USER_ID, role=OrgMemberRole.member))
+    await session.commit()
+
+    r = client.post(
+        f"/orgs/{org.id}/members",
+        headers=_AUTH,
+        json={"email": f"{_uniq('x')}@e.com", "role": "member"},
+    )
+    assert r.status_code == 403  # member < admin
+
+
+def test_bootstrap_creates_org_and_owner(client: TestClient) -> None:
+    """``bootstrap.main`` find-or-creates the org/user/owner-membership and is
+    idempotent — re-running with identical arguments must hit the
+    "already exists" branch for all three instead of tripping a unique
+    constraint (``orgs.slug``, ``users.email``, ``org_members(org_id, user_id)``).
+    """
+    from ippon.scripts.bootstrap import main
+
+    slug = _uniq("boot")
+    rc = main(["--org-slug", slug, "--org-name", "Boot", "--owner-email", "boss@example.com"])
+    assert rc == 0
+    assert (
+        main(["--org-slug", slug, "--org-name", "Boot", "--owner-email", "boss@example.com"]) == 0
+    )
