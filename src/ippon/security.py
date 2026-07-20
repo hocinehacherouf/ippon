@@ -99,6 +99,34 @@ def generate_webhook_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
+# --- API token helpers ------------------------------------------------
+
+_API_TOKEN_PREFIX = "ippon_pat_"
+
+
+def hash_token_secret(secret: str) -> str:
+    """Hex sha256 of an API-token secret (tokens are high-entropy; a fast hash is fine)."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def mint_api_token() -> tuple[str, str, str]:
+    """Return ``(full_token, prefix, secret_sha256)``. Store prefix + sha256; show full once."""
+    prefix = secrets.token_hex(6)  # 12 hex chars, no underscore
+    secret = secrets.token_urlsafe(32)
+    full = f"{_API_TOKEN_PREFIX}{prefix}_{secret}"
+    return full, prefix, hash_token_secret(secret)
+
+
+def parse_api_token(token: str) -> tuple[str, str] | None:
+    """Split a presented token into ``(prefix, secret)``; ``None`` if not our format."""
+    if not token.startswith(_API_TOKEN_PREFIX):
+        return None
+    prefix, sep, secret = token[len(_API_TOKEN_PREFIX) :].partition("_")
+    if not sep or not prefix or not secret:
+        return None
+    return prefix, secret
+
+
 # --- credential encryption -------------------------------------------------
 
 # Current key version. Rows store this in ``credential_kid``; a future
