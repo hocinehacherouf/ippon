@@ -37,6 +37,7 @@ from ippon.api.routes import orgs as orgs_routes
 from ippon.api.routes import repos as repos_routes
 from ippon.api.routes import scans as scans_routes
 from ippon.api.routes import sources as sources_routes
+from ippon.api.routes import tokens as tokens_routes
 from ippon.api.routes.webhooks import azure_devops as azdo_webhooks
 from ippon.api.routes.webhooks import github as github_webhooks
 from ippon.api.routes.webhooks import gitlab as gitlab_webhooks
@@ -53,6 +54,7 @@ OPENAPI_TAGS = [
     {"name": "sources", "description": "Source-provider connections (GitHub/GitLab/AzDO)."},
     {"name": "repos", "description": "Registered repositories."},
     {"name": "scans", "description": "Scan jobs and findings."},
+    {"name": "tokens", "description": "API tokens (mint/list/revoke)."},
     {"name": "admin", "description": "Operator smoke tests (Celery ping, etc.)."},
     {"name": "internal", "description": "Machine-to-machine callbacks (HMAC-signed)."},
     {"name": "webhooks", "description": "Inbound provider webhooks."},
@@ -174,6 +176,10 @@ def _install_routes(app: FastAPI) -> None:
     app.include_router(
         scans_routes.router,
         prefix="/orgs/{org}",
+        dependencies=[Depends(require_org_member)],
+    )
+    app.include_router(
+        tokens_routes.router,
         dependencies=[Depends(require_org_member)],
     )
     app.include_router(admin_routes.router)

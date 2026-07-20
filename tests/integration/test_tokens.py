@@ -1,13 +1,14 @@
-"""Integration tests for the ``ApiToken`` model.
+"""Integration tests for the ``ApiToken`` model and token-management routes.
 
 Require the compose stack (Postgres at minimum; the app lifespan also opens
 ClickHouse + Valkey clients, which the integration env provides). Marked
 ``integration`` and excluded from the default ``just test`` run.
 
-Starts with the reusable ``client`` / ``session`` fixtures (copied from
-``test_orgs.py``) plus a round-trip test that inserts an ``ApiToken`` row via
-the async session and reads it back. Later tasks extend this file with
-route-level coverage (issue/list/revoke token endpoints).
+Uses the reusable ``client`` / ``session`` fixtures (copied from
+``test_orgs.py``). Covers the ``ApiToken`` model round-trip, the
+``authenticate_api_token`` helper, and the ``POST``/``GET``/``DELETE``
+``/orgs/{org}/tokens`` routes (mint shows the secret once, list never echoes
+it, delete soft-revokes so the token stops authenticating).
 """
 
 from __future__ import annotations
@@ -213,3 +214,41 @@ async def test_authenticate_api_token_rejects_wrong_secret_for_known_prefix(
 
     # Constant-time hash comparison must reject it.
     assert await authenticate_api_token(session, forged) is None
+
+
+# --- route-level CRUD (mint/list/revoke) -----------------------------------
+
+
+async def test_create_list_revoke_token(client: TestClient, session: AsyncSession) -> None:
+    """POST mints a token (shown once); GET lists metadata only; DELETE revokes it."""
+    name = _uniq("route-token")
+    created = client.post(
+        f"/orgs/{DEV_ORG_ID}/tokens",
+        headers=_AUTH,
+        json={"name": name, "role": "member"},
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["token"].startswith("ippon_pat_")
+    assert body["name"] == name
+    assert body["role"] == "member"
+    assert "token_sha256" not in body
+    token_id = body["id"]
+    full_token = body["token"]
+
+    # GET lists it, with no secret or digest anywhere in the payload.
+    listed = client.get(f"/orgs/{DEV_ORG_ID}/tokens", headers=_AUTH)
+    assert listed.status_code == 200
+    listed_body = listed.json()
+    items_by_id = {item["id"]: item for item in listed_body["items"]}
+    assert token_id in items_by_id
+    for item in listed_body["items"]:
+        assert "token" not in item
+        assert "token_sha256" not in item
+
+    # DELETE soft-revokes it.
+    deleted = client.delete(f"/orgs/{DEV_ORG_ID}/tokens/{token_id}", headers=_AUTH)
+    assert deleted.status_code == 204
+
+    # A revoked token no longer authenticates.
+    assert await authenticate_api_token(session, full_token) is None
