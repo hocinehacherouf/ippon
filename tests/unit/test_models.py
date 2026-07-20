@@ -15,6 +15,7 @@ def test_metadata_has_expected_tables() -> None:
         "scan_policies",
         "scan_jobs",
         "webhook_deliveries",
+        "api_tokens",
     }
     assert expected.issubset(set(Base.metadata.tables.keys()))
 
@@ -22,4 +23,4 @@ def test_metadata_has_expected_tables() -> None:
 def test_no_stray_tables() -> None:
     # Make sure we haven't accidentally pulled in unrelated tables (e.g. from
     # a third-party library defining things on Base).
-    assert len(Base.metadata.tables) == 8
+    assert len(Base.metadata.tables) == 9

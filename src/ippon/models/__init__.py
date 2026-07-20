@@ -15,6 +15,7 @@ from ippon.models._enums import (
     SourceProvider,
     WebhookSource,
 )
+from ippon.models.api_token import ApiToken
 from ippon.models.org import Org, OrgMember
 from ippon.models.repository import Repository
 from ippon.models.scan_job import ScanJob
@@ -24,6 +25,7 @@ from ippon.models.user import User
 from ippon.models.webhook_delivery import WebhookDelivery
 
 __all__ = [
+    "ApiToken",
     "Base",
     "JobRunnerBackend",
     "Org",
