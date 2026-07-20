@@ -50,6 +50,7 @@ async def get_db(
 async def require_user(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    db: DbSession,
 ) -> Principal:
     if creds is None or creds.scheme.lower() != "bearer":
         raise HTTPException(
@@ -57,10 +58,13 @@ async def require_user(
             detail="missing or malformed Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if settings.ippon_auth_mode == "dev":
+    # Local import: authz.py imports this module at load time, so importing
+    # it back here at module level would create a cycle.
+    from ippon.api.authz import authenticate_api_token
+
+    principal = await authenticate_api_token(db, creds.credentials)
+    if principal is None and settings.ippon_auth_mode == "dev":
         principal = authenticate_dev_token(creds.credentials, settings.ippon_dev_token)
-    else:
-        principal = None  # OIDC validation lands in Phase 4
     if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

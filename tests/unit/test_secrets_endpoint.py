@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -12,11 +12,21 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ippon.api.authz import OrgContext, require_org_member
-from ippon.api.deps import get_ch_client
+from ippon.api.deps import get_ch_client, get_db
 from ippon.api.main import create_app
 from ippon.config import Settings
 from ippon.models import OrgMemberRole
 from ippon.security import DEV_ORG_ID, DEV_PRINCIPAL
+
+
+async def _no_db() -> AsyncIterator[None]:
+    """Override for ``get_db``: this fixture never enters the lifespan, so
+    ``app.state.session_factory`` is unset. ``require_user`` now resolves a
+    ``db`` dependency of its own (to try token auth first), so the no-auth
+    test needs ``get_db`` overridden to reach its 401 rather than erroring on
+    the missing session factory.
+    """
+    yield None
 
 
 class _FakeResult:
@@ -57,6 +67,7 @@ def app() -> Iterator[FastAPI]:
         datetime.now(UTC),  # scanned_at
     ]
     application.dependency_overrides[get_ch_client] = lambda: _FakeCH(row)
+    application.dependency_overrides[get_db] = _no_db
     yield application
     application.dependency_overrides.clear()
 
@@ -90,8 +101,9 @@ def test_list_secrets_returns_redacted_rows(app: FastAPI, client: TestClient) ->
 
 def test_list_secrets_requires_auth(client: TestClient) -> None:
     # No bearer header and no `require_org_member` override: `require_user`
-    # (the first sub-dependency of `require_org_member`) must 401 before any
-    # DB access is attempted, since this unit test has no live session
-    # factory (no lifespan run).
+    # (the first sub-dependency of `require_org_member`) must 401. `get_db`
+    # is overridden (see `_no_db`) so `require_user`'s own `db` dependency
+    # resolves harmlessly instead of erroring on the missing session factory
+    # (this unit test has no live session factory — no lifespan run).
     r = client.get(f"/orgs/{DEV_ORG_ID}/scans/{uuid4()}/secrets")
     assert r.status_code == 401
