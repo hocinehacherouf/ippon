@@ -28,6 +28,8 @@ from typing import Literal
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from ippon.models._enums import OrgMemberRole
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -37,6 +39,7 @@ class Principal:
     email: str | None
     kind: Literal["user", "token", "dev"]
     org_hint: uuid.UUID | None  # bound org for token/dev principals; None for OIDC users
+    org_role: OrgMemberRole | None = None  # the token's role in org_hint (token principals only)
 
 
 # --- dev identity (deterministic so tests + seeds agree) ------------------

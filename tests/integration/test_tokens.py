@@ -23,11 +23,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ippon.api.authz import authenticate_api_token
 from ippon.api.main import create_app
 from ippon.config import Settings, get_settings
 from ippon.db import async_session_scope, make_async_engine, make_async_session_factory
 from ippon.models import ApiToken, OrgMemberRole
-from ippon.security import DEV_ORG_ID, DEV_USER_ID
+from ippon.security import DEV_ORG_ID, DEV_USER_ID, mint_api_token
 
 pytestmark = pytest.mark.integration
 
@@ -122,3 +123,93 @@ async def test_api_token_prefix_unique(client: TestClient, session: AsyncSession
     with pytest.raises(IntegrityError):
         await session.commit()
     await session.rollback()  # leave the session usable for fixture teardown
+
+
+async def _seed_token(
+    session: AsyncSession,
+    *,
+    role: OrgMemberRole = OrgMemberRole.member,
+    revoked_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> str:
+    """Mint + persist an ``ApiToken`` for DEV_ORG_ID/DEV_USER_ID; return the full token."""
+    full, prefix, token_hash = mint_api_token()
+    session.add(
+        ApiToken(
+            org_id=DEV_ORG_ID,
+            created_by_user_id=DEV_USER_ID,
+            name=_uniq("auth-token"),
+            role=role,
+            token_prefix=prefix,
+            token_sha256=token_hash,
+            revoked_at=revoked_at,
+            expires_at=expires_at,
+        )
+    )
+    await session.commit()
+    return full
+
+
+async def test_authenticate_api_token_returns_token_principal(
+    client: TestClient, session: AsyncSession
+) -> None:
+    """A live token authenticates to a ``kind="token"`` Principal carrying its org + role."""
+    full = await _seed_token(session, role=OrgMemberRole.member)
+
+    principal = await authenticate_api_token(session, full)
+
+    assert principal is not None
+    assert principal.kind == "token"
+    assert principal.user_id == DEV_USER_ID
+    assert principal.org_hint == DEV_ORG_ID
+    assert principal.org_role == OrgMemberRole.member
+
+
+async def test_authenticate_api_token_rejects_revoked(
+    client: TestClient, session: AsyncSession
+) -> None:
+    full = await _seed_token(session, revoked_at=datetime.now(UTC))
+
+    assert await authenticate_api_token(session, full) is None
+
+
+async def test_authenticate_api_token_rejects_expired(
+    client: TestClient, session: AsyncSession
+) -> None:
+    full = await _seed_token(session, expires_at=datetime.now(UTC) - timedelta(days=1))
+
+    assert await authenticate_api_token(session, full) is None
+
+
+async def test_authenticate_api_token_rejects_garbage_or_unknown_prefix(
+    session: AsyncSession,
+) -> None:
+    # Not our token format at all.
+    assert await authenticate_api_token(session, "not-an-ippon-token") is None
+    # Right shape, but no such prefix has ever been minted.
+    assert await authenticate_api_token(session, "ippon_pat_deadbeefcafe_bogus-secret") is None
+
+
+async def test_authenticate_api_token_rejects_wrong_secret_for_known_prefix(
+    session: AsyncSession,
+) -> None:
+    """Forgery resistance: a token with known prefix but wrong secret must be rejected."""
+    # Mint a real token and persist it.
+    _, prefix, secret_hash = mint_api_token()
+    session.add(
+        ApiToken(
+            org_id=DEV_ORG_ID,
+            created_by_user_id=DEV_USER_ID,
+            name=_uniq("forgery-test-token"),
+            role=OrgMemberRole.member,
+            token_prefix=prefix,
+            token_sha256=secret_hash,
+        )
+    )
+    await session.commit()
+
+    # Build a forged token: same prefix, wrong secret.
+    forged = f"ippon_pat_{prefix}_totally-wrong-secret"
+
+    # Constant-time hash comparison must reject it.
+    assert await authenticate_api_token(session, forged) is None
