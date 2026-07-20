@@ -9,6 +9,11 @@ Uses the reusable ``client`` / ``session`` fixtures (copied from
 ``authenticate_api_token`` helper, and the ``POST``/``GET``/``DELETE``
 ``/orgs/{org}/tokens`` routes (mint shows the secret once, list never echoes
 it, delete soft-revokes so the token stops authenticating).
+
+The final section exercises minted tokens end-to-end as live bearer
+credentials against other routers: role enforcement (member vs. admin),
+org-binding (a token only authorizes the org it was minted for), post-revoke
+401s, and the role-cannot-exceed-creator cap.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import hashlib
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +34,7 @@ from ippon.api.authz import authenticate_api_token
 from ippon.api.main import create_app
 from ippon.config import Settings, get_settings
 from ippon.db import async_session_scope, make_async_engine, make_async_session_factory
-from ippon.models import ApiToken, OrgMemberRole
+from ippon.models import ApiToken, Org, OrgMemberRole
 from ippon.security import DEV_ORG_ID, DEV_USER_ID, mint_api_token
 
 pytestmark = pytest.mark.integration
@@ -252,3 +258,134 @@ async def test_create_list_revoke_token(client: TestClient, session: AsyncSessio
 
     # A revoked token no longer authenticates.
     assert await authenticate_api_token(session, full_token) is None
+
+
+# --- end-to-end: minted tokens as live bearer credentials -------------------
+#
+# Everything below mints a token through the route (as the dev owner, via
+# ``_AUTH``) and then uses the returned plaintext ``token`` as the
+# ``Authorization`` header for a *separate* call — proving the whole chain
+# (parse → look up by prefix → verify digest → build a token ``Principal`` →
+# ``require_org_member`` → ``require_role``) works from the outside, not just
+# the ``authenticate_api_token`` helper in isolation.
+
+
+def _mint_token(client: TestClient, role: str, *, name: str | None = None) -> Any:
+    """Mint a token for DEV_ORG_ID via the route, as the dev owner; return the
+    parsed creation response (carries the plaintext ``token`` once)."""
+    r = client.post(
+        f"/orgs/{DEV_ORG_ID}/tokens",
+        headers=_AUTH,
+        json={"name": name or _uniq("e2e-token"), "role": role},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_token_can_scan_but_not_admin(client: TestClient) -> None:
+    """A member-role token can do member-gated work (create a scan) but is
+    refused admin-gated work (delete a source) — and the refusal is a pure
+    role check: it fires before the (nonexistent) source is even looked up,
+    so a random uuid4 still 403s rather than 404ing.
+
+    The clone host is unique per run rather than a literal ``github.com``:
+    DEV_ORG_ID is a long-lived shared fixture, and ``test_sources.py`` leaves
+    behind several non-"default-" GitHub-host source connections it never
+    deletes, so a fixed ``github.com`` URL hits ``_resolve_source``'s
+    ambiguity guard (409) — a real conflict, just not the one this test is
+    about. A fresh host per run falls through to the anonymous
+    ``default-github`` connection deterministically, isolating the
+    assertion to role enforcement.
+    """
+    minted = _mint_token(client, "member")
+    auth = _bearer(minted["token"])
+
+    scanned = client.post(
+        f"/orgs/{DEV_ORG_ID}/scans",
+        headers=auth,
+        json={"repo_url": f"https://{_uniq('scan-host')}.example/x/y"},
+    )
+    assert scanned.status_code == 201, scanned.text
+
+    deleted = client.delete(f"/orgs/{DEV_ORG_ID}/sources/{uuid.uuid4()}", headers=auth)
+    assert deleted.status_code == 403
+
+
+async def test_token_bound_to_its_org(client: TestClient, session: AsyncSession) -> None:
+    """A token minted for DEV_ORG_ID is bound to it — presented against a
+    different (existing) org, ``require_org_member`` 404s exactly as it
+    would for a user who isn't a member there, rather than honoring the
+    token's org-independent role.
+    """
+    minted = _mint_token(client, "member")
+    auth = _bearer(minted["token"])
+
+    foreign = Org(slug=_uniq("foreign-tok"), name="Foreign")
+    session.add(foreign)
+    await session.commit()
+
+    r = client.get(f"/orgs/{foreign.id}/repos", headers=auth)
+    assert r.status_code == 404
+
+
+def test_revoked_token_gets_401(client: TestClient) -> None:
+    """A live token authenticates (200); once revoked via the DELETE route,
+    the identical bearer value is rejected outright (401) on the same call.
+    """
+    minted = _mint_token(client, "member")
+    auth = _bearer(minted["token"])
+
+    live = client.get(f"/orgs/{DEV_ORG_ID}/repos", headers=auth)
+    assert live.status_code == 200
+
+    revoked = client.delete(f"/orgs/{DEV_ORG_ID}/tokens/{minted['id']}", headers=_AUTH)
+    assert revoked.status_code == 204
+
+    after = client.get(f"/orgs/{DEV_ORG_ID}/repos", headers=auth)
+    assert after.status_code == 401
+
+
+def test_admin_token_can_mint_lesser_token(client: TestClient) -> None:
+    """An admin-role token clears ``POST /tokens``'s ``require_role(admin)``
+    gate — a genuinely admin-gated action (unlike ``/sources``, which is only
+    member-gated) — and can mint a token at or below its own role. This is
+    the positive control for the cap test below: it proves an admin token
+    *passes* the admin gate, so the next test's 403 can be pinned on the cap
+    instead.
+    """
+    minted = _mint_token(client, "admin")
+    auth = _bearer(minted["token"])
+
+    r = client.post(
+        f"/orgs/{DEV_ORG_ID}/tokens",
+        headers=auth,
+        json={"name": _uniq("admin-minted"), "role": "member"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["token"].startswith("ippon_pat_")
+
+
+def test_admin_token_cannot_mint_owner_token(client: TestClient) -> None:
+    """An admin-role token clears the route's ``require_role(admin)`` gate
+    (admin tokens may mint tokens at all, per the test above) but still
+    can't grant a role above its own — minting an ``owner`` token 403s on
+    the ``role_at_least(ctx.role, body.role)`` cap in the handler, not the
+    dependency gate. Asserting on the error message (not just the status
+    code) pins the 403 on the cap's ``"cannot grant a role above your own"``
+    detail, distinguishing it from the gate's own ``"requires admin role"``
+    403 — both are 403s, so status code alone can't tell them apart.
+    """
+    minted = _mint_token(client, "admin")
+    auth = _bearer(minted["token"])
+
+    r = client.post(
+        f"/orgs/{DEV_ORG_ID}/tokens",
+        headers=auth,
+        json={"name": _uniq("escalate"), "role": "owner"},
+    )
+    assert r.status_code == 403
+    assert "above your own" in r.json()["error"]["message"]

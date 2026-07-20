@@ -42,6 +42,13 @@ open http://localhost:13488                           # ch-ui (ClickHouse admin)
 > version bump, run `just nuke` to wipe local volumes (destroys local data),
 > then `just up && just migrate`.
 
+CI and other scripted callers don't need the shared dev token: mint a
+first-party API token with `POST /orgs/{org}/tokens` (returns `ippon_pat_…`,
+shown once) and pass it as the bearer anywhere the dev token works — e.g.
+`IPPON_DEV_TOKEN=ippon_pat_… just scan <repo>`, or `--token ippon_pat_…` on
+`python -m ippon.scripts.scan` directly. Token auth is tried before the
+`IPPON_DEV_TOKEN` fallback, so either form is accepted transparently.
+
 ## Architecture
 
 - **API** (FastAPI, async) — webhook reception, scan enqueue, HMAC-verified
