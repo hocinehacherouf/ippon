@@ -110,7 +110,7 @@ services:
   # at first launch (form fields are: URL=http://clickhouse:8123, user
   # and password from .env, database=ippon).
   ch-ui:
-    image: ghcr.io/caioricciuti/ch-ui:v2.5.1@sha256:019c7299985d4ee0503df324d17268a4b891bf2f1538d9687918806e7acbf316
+    image: ghcr.io/caioricciuti/ch-ui:v2.8.0@sha256:560e0c9c2b9e74d9c6a8d747f0995aaaf510b3d771e14e753b2dd51998d8f339
     container_name: ippon-ch-ui
     restart: unless-stopped
     depends_on:
