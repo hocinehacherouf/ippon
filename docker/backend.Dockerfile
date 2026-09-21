@@ -8,7 +8,7 @@
 # Pattern lifted from ``groom/backend/Dockerfile`` (Wolfi multi-stage)
 # with python-3.12 and ippon's package layout.
 
-FROM cgr.dev/chainguard/wolfi-base@sha256:2f7a5c164eafbdbe46fe1d91bd1ab4c8cb5c2bdbd10641c3d61bd39962384cdb AS builder
+FROM cgr.dev/chainguard/wolfi-base@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d AS builder
 
 RUN apk add --no-cache \
         python-3.12 \
@@ -30,7 +30,7 @@ RUN uv sync --frozen --no-dev --compile-bytecode
 
 # ---
 
-FROM cgr.dev/chainguard/wolfi-base@sha256:2f7a5c164eafbdbe46fe1d91bd1ab4c8cb5c2bdbd10641c3d61bd39962384cdb
+FROM cgr.dev/chainguard/wolfi-base@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d
 
 # Runtime deps only — no compiler, no headers. ``curl`` is the
 # operational probe used by compose / k8s healthchecks (and by us in
